@@ -1,0 +1,29 @@
+# ===== Entorno virtual =====
+
+venv/
+.env/
+
+# ===== Python =====
+
+**pycache**/
+*.pyc
+*.pyo
+*.pyd
+
+# ===== Datos generados =====
+
+data/*.csv
+
+# ===== Sistema =====
+
+.DS_Store
+Thumbs.db
+
+# ===== IDEs / Editores =====
+
+.vscode/
+.idea/
+
+# ===== Logs =====
+
+*.log
