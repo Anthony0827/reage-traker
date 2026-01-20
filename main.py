@@ -1,10 +1,10 @@
-from camera import test_camera
+from camera import detect_face_and_smile
 
 
 def main():
-    print("Iniciando test de cámara...")
-    test_camera()
-    print("Cámara cerrada correctamente")
+    print("Iniciando detección de emociones...")
+    detect_face_and_smile()
+    print("Programa finalizado")
 
 
 if __name__ == "__main__":
