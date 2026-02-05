@@ -3,918 +3,1743 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAGE TRACKER - Dashboard</title>
+    <title>RAGE TRACKER — Telemetry</title>
     <link rel="icon" href="icono.ico" type="image/x-icon">
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet">
+
+    <!-- Tipografías distintivas: display condensado + mono + sans -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@400;700;800;900&family=JetBrains+Mono:wght@300;400;500;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+    /* =========================================================================
+       TOKENS
+       ========================================================================= */
+    :root {
+        /* Superficies — paleta carbón con tinte azul muy sutil */
+        --bg:            #0a0d14;
+        --bg-deep:       #060810;
+        --surface:       #11161f;
+        --surface-2:     #161c28;
+        --surface-3:     #1c2332;
+        --border:        #232b3b;
+        --border-soft:   #1a2030;
+
+        /* Texto */
+        --text:          #e8ecf3;
+        --text-2:        #a4adc1;
+        --text-3:        #6a7488;
+        --text-4:        #424c5f;
+
+        /* Acentos: un cyan dominante, rojo/verde para emociones */
+        --cyan:          #5cf0d2;
+        --cyan-dim:      #2fb89c;
+        --rage:          #ff5260;
+        --rage-dim:      #b8323d;
+        --happy:         #7cd87a;
+        --happy-dim:     #4c9c4a;
+        --warn:          #ffc857;
+        --neutral:       #6a7488;
+
+        /* Tipografía */
+        --font-display:  'Big Shoulders Display', sans-serif;
+        --font-mono:     'JetBrains Mono', ui-monospace, monospace;
+        --font-body:     'DM Sans', system-ui, sans-serif;
+
+        /* Layout */
+        --rad-sm:        4px;
+        --rad-md:        8px;
+        --rad-lg:        14px;
+        --shadow:        0 8px 32px -12px rgba(0,0,0,0.6);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--font-body);
+        font-size: 15px;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+        min-height: 100vh;
+    }
+
+    /* Fondo: grid blueprint + ruido sutil. Sin orbs flotantes (clichés). */
+    body::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background-image:
+            radial-gradient(circle at 30% 0%, rgba(92,240,210,0.05), transparent 40%),
+            radial-gradient(circle at 80% 100%, rgba(255,82,96,0.04), transparent 50%);
+        pointer-events: none;
+        z-index: 0;
+    }
+    body::after {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background-image:
+            linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+        background-size: 48px 48px;
+        background-position: center center;
+        pointer-events: none;
+        z-index: 0;
+        opacity: 0.6;
+    }
+
+    /* =========================================================================
+       LAYOUT GLOBAL
+       ========================================================================= */
+    .shell {
+        max-width: 1480px;
+        margin: 0 auto;
+        padding: 28px 28px 80px;
+        position: relative;
+        z-index: 1;
+    }
+
+    /* ---- Top bar ---------------------------------------------------------- */
+    .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 18px 22px;
+        margin-bottom: 28px;
+        background: linear-gradient(180deg, var(--surface), var(--surface-2));
+        border: 1px solid var(--border);
+        border-radius: var(--rad-lg);
+        position: relative;
+        overflow: hidden;
+    }
+    .topbar::before {
+        content: '';
+        position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+        background: var(--cyan);
+    }
+
+    .brand {
+        display: flex;
+        align-items: baseline;
+        gap: 14px;
+    }
+    .brand-mark {
+        font-family: var(--font-display);
+        font-weight: 900;
+        font-size: 36px;
+        letter-spacing: -0.5px;
+        line-height: 0.85;
+        color: var(--text);
+    }
+    .brand-mark .accent { color: var(--cyan); }
+    .brand-tag {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--text-3);
+        text-transform: uppercase;
+        letter-spacing: 2px;
+    }
+
+    .topbar-meta {
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--text-2);
+    }
+    .live-dot {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .live-dot::before {
+        content: '';
+        width: 8px; height: 8px;
+        background: var(--happy);
+        border-radius: 50%;
+        box-shadow: 0 0 8px var(--happy);
+        animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50%      { opacity: 0.4; transform: scale(0.85); }
+    }
+
+    /* ---- Tabs ------------------------------------------------------------- */
+    .tabs {
+        display: flex;
+        gap: 4px;
+        background: var(--surface);
+        padding: 4px;
+        border: 1px solid var(--border);
+        border-radius: var(--rad-md);
+    }
+    .tab {
+        background: transparent;
+        border: none;
+        color: var(--text-3);
+        padding: 8px 16px;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        cursor: pointer;
+        border-radius: var(--rad-sm);
+        transition: all 0.18s ease;
+    }
+    .tab:hover { color: var(--text); }
+    .tab.active {
+        background: var(--surface-3);
+        color: var(--cyan);
+        box-shadow: inset 0 0 0 1px var(--border);
+    }
+
+    /* ---- Section headers -------------------------------------------------- */
+    .section-head {
+        display: flex;
+        align-items: baseline;
+        gap: 16px;
+        margin: 38px 0 18px;
+    }
+    .section-head h2 {
+        font-family: var(--font-display);
+        font-weight: 800;
+        font-size: 28px;
+        letter-spacing: -0.5px;
+        color: var(--text);
+        text-transform: uppercase;
+    }
+    .section-head .num {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--text-4);
+        letter-spacing: 2px;
+    }
+    .section-head .rule {
+        flex: 1;
+        height: 1px;
+        background: linear-gradient(90deg, var(--border), transparent);
+    }
+
+    /* =========================================================================
+       HERO KPI
+       ========================================================================= */
+    .hero {
+        display: grid;
+        grid-template-columns: 1.4fr 1fr;
+        gap: 22px;
+        margin-bottom: 8px;
+    }
+    @media (max-width: 980px) {
+        .hero { grid-template-columns: 1fr; }
+    }
+
+    .hero-kpi {
+        background: linear-gradient(180deg, var(--surface), var(--surface-2));
+        border: 1px solid var(--border);
+        border-radius: var(--rad-lg);
+        padding: 32px 36px;
+        position: relative;
+        overflow: hidden;
+        min-height: 340px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+    .hero-kpi::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background:
+            radial-gradient(circle at 100% 0%, rgba(255,82,96,0.10), transparent 50%);
+        pointer-events: none;
+    }
+    .hero-kpi .label {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--text-3);
+        text-transform: uppercase;
+        letter-spacing: 2.5px;
+    }
+    .hero-kpi .label .sep {
+        margin: 0 8px;
+        color: var(--text-4);
+    }
+
+    .hero-value {
+        font-family: var(--font-display);
+        font-weight: 900;
+        font-size: clamp(120px, 18vw, 220px);
+        line-height: 0.85;
+        letter-spacing: -6px;
+        color: var(--rage);
+        position: relative;
+        margin: 4px 0;
+        font-feature-settings: 'tnum';
+    }
+    .hero-value .unit {
+        font-size: 0.3em;
+        color: var(--text-3);
+        letter-spacing: -2px;
+        margin-left: 8px;
+        vertical-align: top;
+        font-weight: 800;
+    }
+    .hero-tagline {
+        font-family: var(--font-body);
+        font-size: 15px;
+        color: var(--text-2);
+        max-width: 480px;
+        font-style: italic;
+    }
+    .hero-spark { margin-top: 8px; }
+    .hero-spark svg { display: block; }
+
+    /* Pequeñas tarjetas dentro del hero (estadísticas vitales) */
+    .vitals {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+    }
+    .vital {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--rad-md);
+        padding: 18px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        position: relative;
+        overflow: hidden;
+        transition: border-color 0.2s;
+    }
+    .vital:hover { border-color: var(--cyan-dim); }
+    .vital .label {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        color: var(--text-3);
+        text-transform: uppercase;
+        letter-spacing: 2px;
+    }
+    .vital .value {
+        font-family: var(--font-display);
+        font-weight: 800;
+        font-size: 48px;
+        line-height: 1;
+        color: var(--text);
+        letter-spacing: -1px;
+        font-feature-settings: 'tnum';
+    }
+    .vital .value .unit {
+        font-size: 16px;
+        color: var(--text-3);
+        margin-left: 4px;
+        font-weight: 700;
+        letter-spacing: 0;
+    }
+    .vital .sub {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        color: var(--text-3);
+    }
+    .vital .sub.up    { color: var(--rage); }
+    .vital .sub.down  { color: var(--happy); }
+
+    /* =========================================================================
+       INSIGHTS — observaciones generadas automáticamente
+       ========================================================================= */
+    .insights {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 14px;
+        margin-bottom: 20px;
+    }
+    .insight {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--cyan);
+        border-radius: var(--rad-md);
+        padding: 18px 20px;
+        font-family: var(--font-body);
+        font-size: 14px;
+        color: var(--text-2);
+        line-height: 1.55;
+        position: relative;
+    }
+    .insight.is-warning   { border-left-color: var(--warn); }
+    .insight.is-danger    { border-left-color: var(--rage); }
+    .insight.is-positive  { border-left-color: var(--happy); }
+    .insight .tag {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        color: var(--text-4);
+        margin-bottom: 6px;
+        display: block;
+    }
+    .insight strong {
+        color: var(--text);
+        font-weight: 700;
+    }
+    .insight .num {
+        font-family: var(--font-mono);
+        color: var(--cyan);
+        font-weight: 500;
+    }
+
+    /* =========================================================================
+       LEADERBOARD — ranking de juegos por rage
+       ========================================================================= */
+    .panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--rad-lg);
+        padding: 24px 28px;
+        margin-bottom: 20px;
+        position: relative;
+    }
+    .panel-title {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        margin-bottom: 18px;
+    }
+    .panel-title h3 {
+        font-family: var(--font-display);
+        font-weight: 800;
+        font-size: 22px;
+        text-transform: uppercase;
+        letter-spacing: -0.3px;
+        color: var(--text);
+    }
+    .panel-title .note {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--text-3);
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+    }
+
+    .lb-row {
+        display: grid;
+        grid-template-columns: 28px 1fr 90px 220px 70px;
+        gap: 14px;
+        align-items: center;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--border-soft);
+        font-family: var(--font-body);
+    }
+    .lb-row:last-child { border-bottom: none; }
+    .lb-rank {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--text-4);
+        font-weight: 700;
+    }
+    .lb-name {
+        font-weight: 500;
+        font-size: 15px;
+        color: var(--text);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .lb-meta {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--text-3);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    .lb-bar {
+        height: 18px;
+        background: var(--surface-3);
+        border-radius: var(--rad-sm);
+        overflow: hidden;
+        position: relative;
+        border: 1px solid var(--border-soft);
+    }
+    .lb-bar .fill {
+        height: 100%;
+        background: linear-gradient(90deg, var(--rage-dim), var(--rage));
+        transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .lb-bar.happy .fill {
+        background: linear-gradient(90deg, var(--happy-dim), var(--happy));
+    }
+    .lb-pct {
+        font-family: var(--font-mono);
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--text);
+        text-align: right;
+        font-feature-settings: 'tnum';
+    }
+    @media (max-width: 720px) {
+        .lb-row {
+            grid-template-columns: 22px 1fr 70px 60px;
         }
+        .lb-bar { display: none; }
+    }
 
-        :root {
-            --neon-red: #ff006e;
-            --neon-blue: #00f5ff;
-            --neon-purple: #b000ff;
-            --dark-bg: #0a0a0f;
-            --card-bg: #151520;
-            --border-glow: rgba(0, 245, 255, 0.3);
-        }
+    /* =========================================================================
+       TIMELINE & HEATMAP & CHARTS GRID
+       ========================================================================= */
+    .chart-grid {
+        display: grid;
+        grid-template-columns: 1.6fr 1fr;
+        gap: 20px;
+        margin-bottom: 20px;
+    }
+    @media (max-width: 980px) {
+        .chart-grid { grid-template-columns: 1fr; }
+    }
+    .panel canvas { display: block; }
 
-        body {
-            font-family: 'Rajdhani', sans-serif;
-            background: var(--dark-bg);
-            color: #fff;
-            overflow-x: hidden;
-            position: relative;
-        }
+    /* Heatmap horas × días */
+    .heatmap-wrap {
+        font-family: var(--font-mono);
+    }
+    .heatmap {
+        display: grid;
+        grid-template-columns: 30px repeat(24, 1fr);
+        gap: 2px;
+        margin-top: 12px;
+    }
+    .heat-hour-label {
+        grid-column: 2 / span 24;
+        display: grid;
+        grid-template-columns: repeat(24, 1fr);
+        gap: 2px;
+        font-size: 9px;
+        color: var(--text-4);
+        text-align: center;
+        margin-bottom: 4px;
+    }
+    .heat-day {
+        font-size: 10px;
+        color: var(--text-3);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        align-self: center;
+    }
+    .heat-cell {
+        aspect-ratio: 1;
+        background: var(--surface-3);
+        border-radius: 2px;
+        position: relative;
+        cursor: pointer;
+        transition: transform 0.1s;
+    }
+    .heat-cell:hover {
+        transform: scale(1.4);
+        z-index: 2;
+        outline: 1px solid var(--cyan);
+    }
+    .heat-legend {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 16px;
+        font-size: 10px;
+        color: var(--text-3);
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+    }
+    .heat-legend .scale {
+        display: flex;
+        gap: 2px;
+    }
+    .heat-legend .scale > div {
+        width: 18px;
+        height: 14px;
+        border-radius: 2px;
+    }
 
-        /* Animated background grid */
-        body::before {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-image: 
-                linear-gradient(rgba(0, 245, 255, 0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(0, 245, 255, 0.03) 1px, transparent 1px);
-            background-size: 50px 50px;
-            animation: gridMove 20s linear infinite;
-            pointer-events: none;
-            z-index: 0;
-        }
+    /* =========================================================================
+       SESSIONS LOG (tab)
+       ========================================================================= */
+    .filter-row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 16px;
+    }
+    .chip {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        color: var(--text-2);
+        padding: 6px 12px;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        border-radius: 999px;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .chip:hover {
+        border-color: var(--cyan-dim);
+        color: var(--text);
+    }
+    .chip.active {
+        background: var(--cyan);
+        color: var(--bg-deep);
+        border-color: var(--cyan);
+        font-weight: 700;
+    }
+    .filter-row .label {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        color: var(--text-4);
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        margin-right: 4px;
+    }
 
-        @keyframes gridMove {
-            0% { transform: translate(0, 0); }
-            100% { transform: translate(50px, 50px); }
-        }
+    .log-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: var(--font-mono);
+        font-size: 13px;
+    }
+    .log-table th {
+        text-align: left;
+        font-weight: 500;
+        color: var(--text-3);
+        padding: 12px 14px;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        border-bottom: 1px solid var(--border);
+        background: var(--bg);
+    }
+    .log-table td {
+        padding: 14px;
+        border-bottom: 1px solid var(--border-soft);
+        color: var(--text-2);
+        font-variant-numeric: tabular-nums;
+    }
+    .log-table tr {
+        transition: background 0.1s;
+    }
+    .log-table tr:hover td {
+        background: var(--surface-2);
+    }
+    .log-table .game-cell {
+        color: var(--text);
+        font-weight: 500;
+        font-family: var(--font-body);
+    }
+    .log-table .rage-cell {
+        color: var(--rage);
+        font-weight: 700;
+    }
+    .log-table .happy-cell {
+        color: var(--happy);
+        font-weight: 700;
+    }
 
-        /* Glowing orbs */
-        .orb {
-            position: fixed;
-            border-radius: 50%;
-            filter: blur(80px);
-            opacity: 0.15;
-            pointer-events: none;
-            z-index: 0;
-        }
+    .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 10px;
+        border-radius: 999px;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        font-weight: 700;
+        border: 1px solid;
+        font-family: var(--font-mono);
+    }
+    .badge::before {
+        content: '';
+        width: 6px; height: 6px;
+        border-radius: 50%;
+        background: currentColor;
+    }
+    .badge.angry   { color: var(--rage);   border-color: var(--rage-dim);   background: rgba(255,82,96,0.08); }
+    .badge.happy   { color: var(--happy);  border-color: var(--happy-dim);  background: rgba(124,216,122,0.08); }
+    .badge.neutral { color: var(--text-3); border-color: var(--border);     background: var(--surface-2); }
 
-        .orb-1 {
-            width: 400px;
-            height: 400px;
-            background: var(--neon-red);
-            top: -100px;
-            right: -100px;
-            animation: float 15s ease-in-out infinite;
-        }
+    .mini-bar {
+        display: inline-block;
+        width: 60px;
+        height: 6px;
+        background: var(--surface-3);
+        border-radius: 2px;
+        overflow: hidden;
+        vertical-align: middle;
+        margin-left: 6px;
+    }
+    .mini-bar > div {
+        height: 100%;
+        background: var(--rage);
+    }
+    .mini-bar.happy > div { background: var(--happy); }
 
-        .orb-2 {
-            width: 500px;
-            height: 500px;
-            background: var(--neon-purple);
-            bottom: -150px;
-            left: -150px;
-            animation: float 20s ease-in-out infinite reverse;
-        }
+    /* =========================================================================
+       GAMES tab — cards detalladas
+       ========================================================================= */
+    .games-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+        gap: 20px;
+    }
+    .game-card {
+        background: linear-gradient(180deg, var(--surface), var(--surface-2));
+        border: 1px solid var(--border);
+        border-radius: var(--rad-lg);
+        padding: 24px;
+        position: relative;
+        overflow: hidden;
+        transition: all 0.2s;
+    }
+    .game-card:hover {
+        border-color: var(--cyan-dim);
+        transform: translateY(-2px);
+    }
+    .game-card .gc-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 18px;
+    }
+    .game-card .gc-title {
+        font-family: var(--font-display);
+        font-weight: 800;
+        font-size: 26px;
+        letter-spacing: -0.5px;
+        line-height: 1;
+        color: var(--text);
+    }
+    .game-card .gc-genre {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        color: var(--text-3);
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        margin-top: 4px;
+    }
+    .game-card .gc-trend {
+        font-family: var(--font-mono);
+        font-size: 22px;
+        font-weight: 700;
+        font-feature-settings: 'tnum';
+    }
+    .gc-trend.angry { color: var(--rage); }
+    .gc-trend.happy { color: var(--happy); }
+    .gc-trend.neutral { color: var(--text-3); }
 
-        .orb-3 {
-            width: 300px;
-            height: 300px;
-            background: var(--neon-blue);
-            top: 50%;
-            left: 50%;
-            animation: pulse 10s ease-in-out infinite;
-        }
+    .gc-donut {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        margin: 8px 0 16px;
+    }
+    .gc-stats {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-family: var(--font-mono);
+        font-size: 12px;
+    }
+    .gc-stats .row {
+        display: flex;
+        justify-content: space-between;
+        color: var(--text-3);
+    }
+    .gc-stats .row .v {
+        color: var(--text);
+        font-weight: 500;
+        font-feature-settings: 'tnum';
+    }
 
-        @keyframes float {
-            0%, 100% { transform: translate(0, 0) scale(1); }
-            50% { transform: translate(50px, -50px) scale(1.1); }
-        }
+    .gc-spark {
+        margin-top: 10px;
+    }
+    .gc-spark-label {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        color: var(--text-4);
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        margin-bottom: 6px;
+    }
 
-        @keyframes pulse {
-            0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.1; }
-            50% { transform: translate(-50%, -50%) scale(1.3); opacity: 0.2; }
-        }
+    /* =========================================================================
+       UTILS
+       ========================================================================= */
+    .hidden { display: none !important; }
 
-        .container {
-            max-width: 1600px;
-            margin: 0 auto;
-            padding: 20px;
-            position: relative;
-            z-index: 1;
-        }
+    .empty-state {
+        text-align: center;
+        padding: 80px 20px;
+        color: var(--text-3);
+    }
+    .empty-state h3 {
+        font-family: var(--font-display);
+        font-size: 32px;
+        font-weight: 800;
+        color: var(--text-2);
+        margin-bottom: 12px;
+        text-transform: uppercase;
+        letter-spacing: -0.5px;
+    }
 
-        /* Header */
-        header {
-            text-align: center;
-            padding: 40px 20px;
-            margin-bottom: 40px;
-            position: relative;
-        }
+    /* Animaciones de entrada escalonadas */
+    @keyframes slide-up {
+        from { opacity: 0; transform: translateY(12px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    .stagger > * {
+        animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+    }
+    .stagger > *:nth-child(1) { animation-delay: 0.02s; }
+    .stagger > *:nth-child(2) { animation-delay: 0.08s; }
+    .stagger > *:nth-child(3) { animation-delay: 0.14s; }
+    .stagger > *:nth-child(4) { animation-delay: 0.20s; }
+    .stagger > *:nth-child(5) { animation-delay: 0.26s; }
+    .stagger > *:nth-child(6) { animation-delay: 0.32s; }
+    .stagger > *:nth-child(7) { animation-delay: 0.38s; }
+    .stagger > *:nth-child(8) { animation-delay: 0.44s; }
 
-        h1 {
-            font-family: 'Orbitron', sans-serif;
-            font-size: 4rem;
-            font-weight: 900;
-            background: linear-gradient(135deg, var(--neon-blue), var(--neon-purple), var(--neon-red));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            text-transform: uppercase;
-            letter-spacing: 8px;
-            margin-bottom: 10px;
-            animation: glowPulse 3s ease-in-out infinite;
-            text-shadow: 0 0 20px rgba(0, 245, 255, 0.5);
-        }
-
-        @keyframes glowPulse {
-            0%, 100% { filter: brightness(1) drop-shadow(0 0 20px rgba(0, 245, 255, 0.5)); }
-            50% { filter: brightness(1.3) drop-shadow(0 0 40px rgba(255, 0, 110, 0.7)); }
-        }
-
-        .subtitle {
-            font-size: 1.3rem;
-            color: #888;
-            letter-spacing: 3px;
-            text-transform: uppercase;
-        }
-
-        /* Navigation Tabs */
-        .nav-tabs {
-            display: flex;
-            gap: 20px;
-            justify-content: center;
-            margin-bottom: 40px;
-            flex-wrap: wrap;
-        }
-
-        .tab-btn {
-            background: var(--card-bg);
-            border: 2px solid var(--border-glow);
-            color: #fff;
-            padding: 15px 40px;
-            font-family: 'Orbitron', sans-serif;
-            font-size: 1rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .tab-btn::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(0, 245, 255, 0.3), transparent);
-            transition: left 0.5s;
-        }
-
-        .tab-btn:hover::before {
-            left: 100%;
-        }
-
-        .tab-btn:hover {
-            border-color: var(--neon-blue);
-            box-shadow: 0 0 20px var(--border-glow);
-            transform: translateY(-2px);
-        }
-
-        .tab-btn.active {
-            background: linear-gradient(135deg, var(--neon-blue), var(--neon-purple));
-            border-color: var(--neon-blue);
-            box-shadow: 0 0 30px rgba(0, 245, 255, 0.6);
-        }
-
-        /* Cards */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 25px;
-            margin-bottom: 40px;
-        }
-
-        .stat-card {
-            background: var(--card-bg);
-            border: 2px solid rgba(255, 255, 255, 0.1);
-            padding: 30px;
-            border-radius: 15px;
-            position: relative;
-            overflow: hidden;
-            transition: all 0.3s ease;
-        }
-
-        .stat-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 4px;
-            background: linear-gradient(90deg, var(--neon-blue), var(--neon-purple), var(--neon-red));
-        }
-
-        .stat-card:hover {
-            transform: translateY(-5px);
-            border-color: var(--border-glow);
-            box-shadow: 0 10px 40px rgba(0, 245, 255, 0.2);
-        }
-
-        .stat-label {
-            font-size: 0.9rem;
-            color: #888;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            margin-bottom: 10px;
-        }
-
-        .stat-value {
-            font-family: 'Orbitron', sans-serif;
-            font-size: 3rem;
-            font-weight: 900;
-            background: linear-gradient(135deg, var(--neon-blue), var(--neon-purple));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 10px;
-        }
-
-        .stat-subtext {
-            font-size: 0.85rem;
-            color: #666;
-        }
-
-        /* Chart Container */
-        .chart-container {
-            background: var(--card-bg);
-            border: 2px solid rgba(255, 255, 255, 0.1);
-            border-radius: 15px;
-            padding: 30px;
-            margin-bottom: 30px;
-            position: relative;
-        }
-
-        .chart-container::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 4px;
-            background: linear-gradient(90deg, var(--neon-red), var(--neon-purple), var(--neon-blue));
-        }
-
-        .chart-title {
-            font-family: 'Orbitron', sans-serif;
-            font-size: 1.5rem;
-            font-weight: 700;
-            margin-bottom: 20px;
-            color: var(--neon-blue);
-            text-transform: uppercase;
-            letter-spacing: 3px;
-        }
-
-        /* Game Cards */
-        .game-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-            gap: 25px;
-        }
-
-        .game-card {
-            background: var(--card-bg);
-            border: 2px solid rgba(255, 255, 255, 0.1);
-            border-radius: 15px;
-            padding: 25px;
-            position: relative;
-            overflow: hidden;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .game-card::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            height: 3px;
-            background: linear-gradient(90deg, var(--neon-red), var(--neon-blue));
-            transform: scaleX(0);
-            transition: transform 0.3s ease;
-        }
-
-        .game-card:hover::after {
-            transform: scaleX(1);
-        }
-
-        .game-card:hover {
-            transform: translateY(-5px);
-            border-color: var(--neon-blue);
-            box-shadow: 0 10px 40px rgba(0, 245, 255, 0.3);
-        }
-
-        .game-title {
-            font-family: 'Orbitron', sans-serif;
-            font-size: 1.8rem;
-            font-weight: 700;
-            margin-bottom: 15px;
-            color: #fff;
-        }
-
-        .game-stats {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 15px;
-            margin-top: 20px;
-        }
-
-        .mini-stat {
-            text-align: center;
-        }
-
-        .mini-stat-value {
-            font-family: 'Orbitron', sans-serif;
-            font-size: 1.5rem;
-            font-weight: 700;
-            display: block;
-        }
-
-        .mini-stat-label {
-            font-size: 0.75rem;
-            color: #666;
-            text-transform: uppercase;
-            margin-top: 5px;
-        }
-
-        .rage-bar {
-            height: 8px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            overflow: hidden;
-            margin-top: 15px;
-        }
-
-        .rage-fill {
-            height: 100%;
-            background: linear-gradient(90deg, var(--neon-blue), var(--neon-red));
-            transition: width 0.5s ease;
-        }
-
-        /* Sessions Table */
-        .sessions-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-
-        .sessions-table th {
-            background: rgba(0, 245, 255, 0.1);
-            padding: 15px;
-            text-align: left;
-            font-family: 'Orbitron', sans-serif;
-            font-weight: 700;
-            text-transform: uppercase;
-            font-size: 0.9rem;
-            letter-spacing: 2px;
-            border-bottom: 2px solid var(--neon-blue);
-        }
-
-        .sessions-table td {
-            padding: 12px 15px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .sessions-table tr:hover {
-            background: rgba(0, 245, 255, 0.05);
-        }
-
-        .emotion-badge {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 700;
-            text-transform: uppercase;
-        }
-
-        .badge-happy {
-            background: rgba(0, 255, 0, 0.2);
-            color: #0f0;
-            border: 1px solid #0f0;
-        }
-
-        .badge-angry {
-            background: rgba(255, 0, 110, 0.2);
-            color: var(--neon-red);
-            border: 1px solid var(--neon-red);
-        }
-
-        .badge-neutral {
-            background: rgba(255, 255, 255, 0.1);
-            color: #888;
-            border: 1px solid #888;
-        }
-
-        /* Loading Animation */
-        .loading {
-            text-align: center;
-            padding: 60px;
-        }
-
-        .spinner {
-            width: 60px;
-            height: 60px;
-            border: 4px solid rgba(0, 245, 255, 0.2);
-            border-top-color: var(--neon-blue);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .hidden {
-            display: none;
-        }
-
-        /* Responsive */
-        @media (max-width: 768px) {
-            h1 {
-                font-size: 2.5rem;
-                letter-spacing: 4px;
-            }
-
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .game-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .nav-tabs {
-                flex-direction: column;
-                align-items: stretch;
-            }
-        }
+    /* Scrollbar custom (sutil) */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb {
+        background: var(--surface-3);
+        border-radius: 5px;
+        border: 2px solid var(--bg);
+    }
+    ::-webkit-scrollbar-thumb:hover { background: var(--border); }
     </style>
 </head>
 <body>
-    <div class="orb orb-1"></div>
-    <div class="orb orb-2"></div>
-    <div class="orb orb-3"></div>
 
-    <div class="container">
-        <header>
-            <h1>RAGE TRACKER</h1>
-            <p class="subtitle">Gaming Emotion Analytics</p>
-        </header>
+<div class="shell">
 
-        <div class="nav-tabs">
-            <button class="tab-btn active" onclick="showTab('overview')">Overview</button>
-            <button class="tab-btn" onclick="showTab('games')">Games</button>
-            <button class="tab-btn" onclick="showTab('sessions')">Sessions</button>
-            <button class="tab-btn" onclick="showTab('analytics')">Analytics</button>
+    <!-- =========================================================
+         TOP BAR
+         ========================================================= -->
+    <div class="topbar">
+        <div class="brand">
+            <div class="brand-mark">RAGE<span class="accent">/</span>TRACKER</div>
+            <div class="brand-tag">// Gaming Emotion Telemetry</div>
         </div>
-
-        <!-- Overview Tab -->
-        <div id="overview-tab" class="tab-content">
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-label">Total Sessions</div>
-                    <div class="stat-value" id="total-sessions">0</div>
-                    <div class="stat-subtext">Gaming sessions tracked</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Total Playtime</div>
-                    <div class="stat-value" id="total-playtime">0h</div>
-                    <div class="stat-subtext">Hours in-game</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Rage Index</div>
-                    <div class="stat-value" id="rage-index">0%</div>
-                    <div class="stat-subtext">Overall anger percentage</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Happy Index</div>
-                    <div class="stat-value" id="happy-index">0%</div>
-                    <div class="stat-subtext">Overall happiness percentage</div>
-                </div>
+        <div class="topbar-meta">
+            <span id="conn-status" class="live-dot">SYS_ONLINE</span>
+            <span id="last-update">—</span>
+            <div class="tabs" role="tablist">
+                <button class="tab active" data-tab="dashboard">Dashboard</button>
+                <button class="tab" data-tab="games">Games</button>
+                <button class="tab" data-tab="log">Log</button>
             </div>
-
-            <div class="chart-container">
-    <h3 class="chart-title">Emotion Distribution</h3>
-    <div style="max-width: 400px; margin: 0 auto;">
-        <canvas id="emotionPieChart"></canvas>
+        </div>
     </div>
-</div>
-            <div class="chart-container">
-                <h3 class="chart-title">Session Timeline</h3>
-                <canvas id="timelineChart"></canvas>
-            </div>
-        </div>
 
-        <!-- Games Tab -->
-        <div id="games-tab" class="tab-content hidden">
-            <div class="game-grid" id="games-container">
-                <div class="loading">
-                    <div class="spinner"></div>
-                    <p>Loading games...</p>
+    <!-- =========================================================
+         DASHBOARD TAB
+         ========================================================= -->
+    <div class="tab-panel" id="tab-dashboard">
+
+        <!-- HERO KPI -->
+        <div class="hero stagger">
+            <div class="hero-kpi">
+                <div>
+                    <div class="label">
+                        <span>// Rage Index</span>
+                        <span class="sep">·</span>
+                        <span>All time</span>
+                    </div>
+                    <div class="hero-value" id="hero-rage">0<span class="unit">%</span></div>
+                    <div class="hero-tagline" id="hero-tagline">Analizando tu telemetría emocional...</div>
+                </div>
+                <div class="hero-spark">
+                    <div class="label" style="margin-bottom:8px">// Tendencia · últimas sesiones</div>
+                    <svg id="hero-sparkline" width="100%" height="60" viewBox="0 0 600 60" preserveAspectRatio="none"></svg>
+                </div>
+            </div>
+
+            <div class="vitals">
+                <div class="vital">
+                    <div class="label">// Sesiones</div>
+                    <div class="value" id="vital-sessions">0</div>
+                    <div class="sub" id="vital-sessions-sub">—</div>
+                </div>
+                <div class="vital">
+                    <div class="label">// Tiempo total</div>
+                    <div class="value"><span id="vital-time">0</span><span class="unit" id="vital-time-unit">m</span></div>
+                    <div class="sub" id="vital-time-sub">—</div>
+                </div>
+                <div class="vital">
+                    <div class="label">// Juegos</div>
+                    <div class="value" id="vital-games">0</div>
+                    <div class="sub" id="vital-games-sub">—</div>
+                </div>
+                <div class="vital">
+                    <div class="label">// Peak rage events</div>
+                    <div class="value" id="vital-peaks">0</div>
+                    <div class="sub" id="vital-peaks-sub">—</div>
                 </div>
             </div>
         </div>
 
-        <!-- Sessions Tab -->
-        <div id="sessions-tab" class="tab-content hidden">
-            <div class="chart-container">
-                <h3 class="chart-title">Recent Sessions</h3>
-                <table class="sessions-table" id="sessions-table">
+        <!-- INSIGHTS -->
+        <div class="section-head">
+            <span class="num">01</span>
+            <h2>Insights</h2>
+            <div class="rule"></div>
+        </div>
+        <div class="insights stagger" id="insights-container"></div>
+
+        <!-- LEADERBOARD -->
+        <div class="section-head">
+            <span class="num">02</span>
+            <h2>Rage Leaderboard</h2>
+            <div class="rule"></div>
+        </div>
+        <div class="panel">
+            <div class="panel-title">
+                <h3>Top juegos por % de rage medio</h3>
+                <span class="note">Ordenado descendente</span>
+            </div>
+            <div id="leaderboard"></div>
+        </div>
+
+        <!-- CHARTS GRID -->
+        <div class="chart-grid">
+            <div class="panel">
+                <div class="panel-title">
+                    <h3>Timeline de sesiones</h3>
+                    <span class="note">Rage % · happy %</span>
+                </div>
+                <div style="height:280px;"><canvas id="chart-timeline"></canvas></div>
+            </div>
+            <div class="panel">
+                <div class="panel-title">
+                    <h3>Distribución emocional</h3>
+                    <span class="note">Total acumulado</span>
+                </div>
+                <div style="height:280px;"><canvas id="chart-distribution"></canvas></div>
+            </div>
+        </div>
+
+        <!-- HEATMAP -->
+        <div class="section-head">
+            <span class="num">03</span>
+            <h2>Cuándo rageas</h2>
+            <div class="rule"></div>
+        </div>
+        <div class="panel">
+            <div class="panel-title">
+                <h3>Mapa de calor · hora × día</h3>
+                <span class="note">Rage % medio por franja</span>
+            </div>
+            <div class="heatmap-wrap" id="heatmap-wrap"></div>
+        </div>
+    </div>
+
+    <!-- =========================================================
+         GAMES TAB
+         ========================================================= -->
+    <div class="tab-panel hidden" id="tab-games">
+        <div class="section-head">
+            <span class="num">G1</span>
+            <h2>Perfiles de juego</h2>
+            <div class="rule"></div>
+        </div>
+        <div class="games-grid stagger" id="games-grid"></div>
+    </div>
+
+    <!-- =========================================================
+         LOG TAB
+         ========================================================= -->
+    <div class="tab-panel hidden" id="tab-log">
+        <div class="section-head">
+            <span class="num">L1</span>
+            <h2>Session Log</h2>
+            <div class="rule"></div>
+        </div>
+        <div class="panel">
+            <div class="filter-row" id="filter-row">
+                <span class="label">// Filtrar:</span>
+                <button class="chip active" data-filter="all">Todas</button>
+                <!-- chips por juego se generan en JS -->
+            </div>
+            <div style="overflow-x:auto;">
+                <table class="log-table">
                     <thead>
                         <tr>
-                            <th>Date</th>
-                            <th>Game</th>
-                            <th>Duration</th>
-                            <th>Emotions</th>
-                            <th>Trend</th>
+                            <th style="width:140px">Fecha</th>
+                            <th>Juego</th>
+                            <th style="width:90px">Duración</th>
+                            <th style="width:160px">Rage</th>
+                            <th style="width:160px">Happy</th>
+                            <th style="width:80px">Peaks</th>
+                            <th style="width:120px">Tendencia</th>
                         </tr>
                     </thead>
-                    <tbody id="sessions-tbody">
-                        <tr><td colspan="5" class="loading">Loading sessions...</td></tr>
-                    </tbody>
+                    <tbody id="log-tbody"></tbody>
                 </table>
             </div>
         </div>
-
-        <!-- Analytics Tab -->
-        <div id="analytics-tab" class="tab-content hidden">
-            <div class="chart-container">
-                <h3 class="chart-title">Rage Analysis by Game</h3>
-                <canvas id="rageComparisonChart"></canvas>
-            </div>
-
-            <div class="chart-container">
-                <h3 class="chart-title">Emotion Trends Over Time</h3>
-                <canvas id="trendChart"></canvas>
-            </div>
-
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-label">Ragiest Game</div>
-                    <div class="stat-value" style="font-size: 1.5rem;" id="ragiest-game">-</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Happiest Game</div>
-                    <div class="stat-value" style="font-size: 1.5rem;" id="happiest-game">-</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Most Played</div>
-                    <div class="stat-value" style="font-size: 1.5rem;" id="most-played">-</div>
-                </div>
-            </div>
-        </div>
     </div>
+</div>
 
-    <script>
-        // Sample data - Replace with actual data from CSV/JSON
-        let gameData = {};
-        let sessionsData = [];
+<script>
+// =========================================================================
+// ESTADO GLOBAL
+// =========================================================================
+const STATE = {
+    raw: null,
+    filteredSessions: null,
+    logFilter: 'all',
+};
 
-        // Tab switching
-        function showTab(tabName) {
-            document.querySelectorAll('.tab-content').forEach(tab => {
-                tab.classList.add('hidden');
+// Chart.js defaults coherentes con el tema (solo si Chart cargó correctamente)
+if (typeof Chart !== 'undefined') {
+    Chart.defaults.color = '#a4adc1';
+    Chart.defaults.borderColor = '#232b3b';
+    Chart.defaults.font.family = "'JetBrains Mono', monospace";
+    Chart.defaults.font.size = 11;
+}
+
+// =========================================================================
+// UTILIDADES
+// =========================================================================
+function $(sel) { return document.querySelector(sel); }
+function $$(sel) { return Array.from(document.querySelectorAll(sel)); }
+
+function fmtTime(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    if (m < 60) return `${m}m ${String(s).padStart(2,'0')}s`;
+    const h = Math.floor(m / 60);
+    return `${h}h ${String(m % 60).padStart(2,'0')}m`;
+}
+
+function fmtTimeShort(seconds) {
+    if (seconds < 60) return `${seconds}s`;
+    const m = Math.floor(seconds / 60);
+    if (m < 60) return `${m}m`;
+    const h = Math.floor(m / 60);
+    return `${h}h${m % 60 ? ' ' + (m % 60) + 'm' : ''}`;
+}
+
+function animateNumber(el, target, duration = 900, suffix = '') {
+    const start = parseFloat(el.dataset.current || '0');
+    const t0 = performance.now();
+    function tick(now) {
+        const t = Math.min(1, (now - t0) / duration);
+        // ease out cubic
+        const eased = 1 - Math.pow(1 - t, 3);
+        const val = start + (target - start) * eased;
+        el.textContent = (Number.isInteger(target) ? Math.round(val) : val.toFixed(1)) + suffix;
+        if (t < 1) requestAnimationFrame(tick);
+        else el.dataset.current = target;
+    }
+    requestAnimationFrame(tick);
+}
+
+// =========================================================================
+// CARGA DE DATOS
+// =========================================================================
+async function loadData() {
+    try {
+        const res = await fetch('/api/data');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        STATE.raw = data;
+        $('#last-update').textContent = `// updated ${new Date().toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit', second:'2-digit'})}`;
+        render();
+    } catch (err) {
+        console.error(err);
+        $('#conn-status').textContent = 'SYS_OFFLINE';
+        $('#conn-status').style.color = 'var(--rage)';
+        $('#hero-tagline').textContent = 'No se pudo cargar la telemetría. Asegúrate de que dashboard_server.py está corriendo.';
+    }
+}
+
+function render() {
+    const d = STATE.raw;
+    if (!d) return;
+    if (!d.sessions || d.sessions.length === 0) {
+        $('#tab-dashboard').innerHTML = '<div class="empty-state"><h3>Sin datos todavía</h3><p>Inicia una sesión desde main.py para empezar a generar telemetría.</p></div>';
+        return;
+    }
+    renderHero(d);
+    renderInsights(d);
+    renderLeaderboard(d);
+    renderTimelineChart(d);
+    renderDistributionChart(d);
+    renderHeatmap(d);
+    renderGamesTab(d);
+    renderLogTab(d);
+}
+
+// =========================================================================
+// HERO + VITALS
+// =========================================================================
+function renderHero(d) {
+    const sessions = d.sessions;
+    const totalRage  = sessions.reduce((s, x) => s + x.angry_count,   0);
+    const totalHappy = sessions.reduce((s, x) => s + x.happy_count,   0);
+    const totalNeut  = sessions.reduce((s, x) => s + x.neutral_count, 0);
+    const grand = totalRage + totalHappy + totalNeut;
+    const ragePct = grand > 0 ? (totalRage / grand * 100) : 0;
+
+    // Hero gigante
+    const target = Math.round(ragePct);
+    animateHeroNumber(target);
+    $('#hero-tagline').textContent = generateTagline(ragePct, sessions.length);
+
+    // Sparkline (últimas 20 sesiones, rage % por sesión)
+    const recent = sessions.slice(-20);
+    drawSparkline('#hero-sparkline', recent.map(s => s.angry_percentage));
+
+    // Vitals
+    const totalSec = sessions.reduce((s, x) => s + x.duration_seconds, 0);
+    const totalMin = Math.round(totalSec / 60);
+    const totalHrs = (totalSec / 3600).toFixed(1);
+    const games = new Set(sessions.map(s => s.game)).size;
+    const peaks = sessions.reduce((s, x) => s + (x.peak_rage_count || 0), 0);
+
+    animateNumber($('#vital-sessions'), sessions.length);
+    if (totalSec >= 3600) {
+        animateNumber($('#vital-time'), parseFloat(totalHrs));
+        $('#vital-time-unit').textContent = 'h';
+    } else {
+        animateNumber($('#vital-time'), totalMin);
+        $('#vital-time-unit').textContent = 'm';
+    }
+    animateNumber($('#vital-games'), games);
+    animateNumber($('#vital-peaks'), peaks);
+
+    // Subtítulos contextuales
+    const avgDur = sessions.length ? totalSec / sessions.length : 0;
+    $('#vital-sessions-sub').textContent = `// ~${Math.round(avgDur / 60)}m por sesión`;
+    $('#vital-time-sub').textContent = totalSec >= 3600 ? `// ${totalMin} minutos totales` : '// tiempo invertido en rage';
+    $('#vital-games-sub').textContent = `// catalogados`;
+    $('#vital-peaks-sub').textContent = `// momentos de rage intenso`;
+}
+
+function animateHeroNumber(target) {
+    const el = $('#hero-rage');
+    const start = parseFloat(el.dataset.current || '0');
+    const t0 = performance.now();
+    const duration = 1100;
+    function tick(now) {
+        const t = Math.min(1, (now - t0) / duration);
+        const eased = 1 - Math.pow(1 - t, 3);
+        const val = Math.round(start + (target - start) * eased);
+        el.innerHTML = `${val}<span class="unit">%</span>`;
+        if (t < 1) requestAnimationFrame(tick);
+        else el.dataset.current = target;
+    }
+    requestAnimationFrame(tick);
+}
+
+function generateTagline(ragePct, sessionCount) {
+    if (sessionCount < 3) {
+        return `Sólo ${sessionCount} sesiones registradas. Los patrones empezarán a emerger cuando lleguemos a 10+.`;
+    }
+    if (ragePct >= 80) return `Eight de cada diez emociones son rage. Considera respirar entre partidas. O cambiar de juego.`;
+    if (ragePct >= 60) return `Tu telemetría dice que más rageas que disfrutas. Tal vez ese juego no es lo que crees.`;
+    if (ragePct >= 40) return `Equilibrio inestable: el rage gana por poco. Variedad podría ayudar.`;
+    if (ragePct >= 20) return `Disfrutas más de lo que sufres. Buen rollo general.`;
+    return `Casi cero rage. ¿Estás seguro de que la cámara apunta a tu cara?`;
+}
+
+// =========================================================================
+// SPARKLINE SVG CUSTOM (sin librería)
+// =========================================================================
+function drawSparkline(selector, values) {
+    const el = document.querySelector(selector);
+    if (!el || !values.length) return;
+    const w = 600, h = 60;
+    const pad = 4;
+    const max = 100;
+    const min = 0;
+    const step = (w - pad * 2) / Math.max(1, values.length - 1);
+
+    const points = values.map((v, i) => {
+        const x = pad + i * step;
+        const y = pad + (h - pad * 2) * (1 - (v - min) / (max - min));
+        return [x, y];
+    });
+
+    const path = points.map((p, i) => (i === 0 ? `M ${p[0]} ${p[1]}` : `L ${p[0]} ${p[1]}`)).join(' ');
+    const areaPath = path + ` L ${points[points.length-1][0]} ${h-pad} L ${points[0][0]} ${h-pad} Z`;
+
+    el.innerHTML = `
+        <defs>
+            <linearGradient id="spark-fill" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stop-color="#ff5260" stop-opacity="0.35"/>
+                <stop offset="100%" stop-color="#ff5260" stop-opacity="0"/>
+            </linearGradient>
+        </defs>
+        <path d="${areaPath}" fill="url(#spark-fill)" />
+        <path d="${path}" fill="none" stroke="#ff5260" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" />
+        ${points.map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="2" fill="#ff5260" />`).join('')}
+    `;
+}
+
+function drawMiniSparkline(values, color) {
+    if (!values.length) return '';
+    const w = 100, h = 28;
+    const max = Math.max(100, ...values);
+    const min = 0;
+    const step = w / Math.max(1, values.length - 1);
+    const points = values.map((v, i) => {
+        const x = i * step;
+        const y = h - (h * (v - min) / (max - min));
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+        <polyline points="${points.join(' ')}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" />
+    </svg>`;
+}
+
+// =========================================================================
+// INSIGHTS — observaciones automáticas
+// =========================================================================
+function renderInsights(d) {
+    const sessions = d.sessions;
+    const insights = [];
+
+    // Computar agregados por juego
+    const byGame = {};
+    for (const s of sessions) {
+        if (!byGame[s.game]) byGame[s.game] = {sessions: 0, rage: 0, happy: 0, neutral: 0, totalRage: 0, totalHappy: 0, dur: 0, peaks: 0};
+        const g = byGame[s.game];
+        g.sessions++;
+        g.rage += s.angry_percentage;
+        g.happy += s.happy_percentage;
+        g.totalRage += s.angry_count;
+        g.totalHappy += s.happy_count;
+        g.dur += s.duration_seconds;
+        g.peaks += (s.peak_rage_count || 0);
+    }
+    for (const g of Object.values(byGame)) {
+        g.avgRage = g.rage / g.sessions;
+        g.avgHappy = g.happy / g.sessions;
+    }
+    const sortedRage = Object.entries(byGame).sort((a, b) => b[1].avgRage - a[1].avgRage);
+    const sortedHappy = Object.entries(byGame).sort((a, b) => b[1].avgHappy - a[1].avgHappy);
+
+    // 1. Juego más rage
+    if (sortedRage.length > 0) {
+        const [name, g] = sortedRage[0];
+        insights.push({
+            tag: 'Juego más tóxico',
+            html: `<strong>${name}</strong> es tu fuente principal de rage: <span class="num">${g.avgRage.toFixed(1)}%</span> de rage medio en ${g.sessions} sesión${g.sessions === 1 ? '' : 'es'}.`,
+            cls: 'is-danger',
+        });
+    }
+
+    // 2. Juego más happy (si difiere)
+    if (sortedHappy.length > 0 && sortedHappy[0][0] !== sortedRage[0]?.[0]) {
+        const [name, g] = sortedHappy[0];
+        if (g.avgHappy > 10) {
+            insights.push({
+                tag: 'Oasis emocional',
+                html: `<strong>${name}</strong> es el único que te hace sonreír: <span class="num">${g.avgHappy.toFixed(1)}%</span> de felicidad media. Considera jugarlo más.`,
+                cls: 'is-positive',
             });
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            
-            document.getElementById(tabName + '-tab').classList.remove('hidden');
-            event.target.classList.add('active');
         }
+    }
 
-        // Load data from JSON/CSV
-        async function loadData() {
-            try {
-                // Try to load real data from API
-                const response = await fetch('/api/data');
-                let data;
-                
-                if (response.ok) {
-                    data = await response.json();
-                    console.log('✅ Datos reales cargados desde la API');
-                } else {
-                    // Fallback to sample data if API fails
-                    console.log('⚠️  API no disponible, usando datos de ejemplo');
-                    data = generateSampleData();
-                }
-                
-                // If no sessions exist, use sample data
-                if (!data.sessions || data.sessions.length === 0) {
-                    console.log('📭 No hay sesiones, mostrando datos de ejemplo');
-                    data = generateSampleData();
-                }
-                
-                updateOverview(data);
-                updateGamesTab(data);
-                updateSessionsTab(data);
-                updateAnalyticsTab(data);
-            } catch (error) {
-                console.error('Error loading data:', error);
-                // Use sample data on error
-                const data = generateSampleData();
-                updateOverview(data);
-                updateGamesTab(data);
-                updateSessionsTab(data);
-                updateAnalyticsTab(data);
+    // 3. Pico de rage absoluto
+    const peakSession = [...sessions].sort((a, b) => (b.peak_rage_count || 0) - (a.peak_rage_count || 0))[0];
+    if (peakSession && peakSession.peak_rage_count > 0) {
+        insights.push({
+            tag: 'Pico histórico',
+            html: `Tu peor momento: <span class="num">${peakSession.peak_rage_count}</span> peak rage events en una sola sesión de <strong>${peakSession.game}</strong> (${peakSession.date.split(' ')[0]}).`,
+            cls: 'is-warning',
+        });
+    }
+
+    // 4. Patrón temporal
+    const hourCounts = new Array(24).fill(0);
+    const hourRageSum = new Array(24).fill(0);
+    for (const s of sessions) {
+        const h = parseInt(s.date.split(' ')[1]?.split(':')[0] || 0);
+        hourCounts[h]++;
+        hourRageSum[h] += s.angry_percentage;
+    }
+    let worstHour = -1, worstAvg = 0;
+    for (let h = 0; h < 24; h++) {
+        if (hourCounts[h] >= 2) {
+            const avg = hourRageSum[h] / hourCounts[h];
+            if (avg > worstAvg) { worstAvg = avg; worstHour = h; }
+        }
+    }
+    if (worstHour >= 0 && worstAvg > 50) {
+        const hrLabel = `${String(worstHour).padStart(2,'0')}:00–${String(worstHour+1).padStart(2,'0')}:00`;
+        insights.push({
+            tag: 'Hora de mayor rage',
+            html: `Entre las <strong>${hrLabel}</strong> tu rage medio es <span class="num">${worstAvg.toFixed(0)}%</span>. ${worstHour >= 22 || worstHour < 4 ? 'Quizá deberías dormir.' : ''}`,
+            cls: 'is-warning',
+        });
+    }
+
+    // 5. Racha actual
+    const last5 = sessions.slice(-5);
+    const last5Angry = last5.filter(s => s.emotional_trend === 'angry').length;
+    if (last5Angry >= 4) {
+        insights.push({
+            tag: 'Racha activa',
+            html: `<strong>${last5Angry} de tus últimas 5 sesiones</strong> han terminado en rage. Considera una pausa.`,
+            cls: 'is-danger',
+        });
+    } else if (sessions.slice(-3).every(s => s.emotional_trend === 'happy')) {
+        insights.push({
+            tag: 'Buena racha',
+            html: `Las últimas <strong>3 sesiones</strong> han sido felices. Estás en zona buena.`,
+            cls: 'is-positive',
+        });
+    }
+
+    // 6. Sesión más larga
+    const longest = [...sessions].sort((a, b) => b.duration_seconds - a.duration_seconds)[0];
+    if (longest && longest.duration_seconds > 1800) {
+        insights.push({
+            tag: 'Maratón',
+            html: `Sesión más larga: <strong>${longest.game}</strong> · <span class="num">${fmtTimeShort(longest.duration_seconds)}</span> · ${longest.angry_percentage.toFixed(0)}% rage.`,
+            cls: '',
+        });
+    }
+
+    // Render
+    const container = $('#insights-container');
+    container.innerHTML = insights.map(i => `
+        <div class="insight ${i.cls}">
+            <span class="tag">// ${i.tag}</span>
+            ${i.html}
+        </div>
+    `).join('') || '<div class="insight">Aún no hay suficientes datos para generar insights.</div>';
+}
+
+// =========================================================================
+// LEADERBOARD
+// =========================================================================
+function renderLeaderboard(d) {
+    const sessions = d.sessions;
+    const byGame = {};
+    for (const s of sessions) {
+        if (!byGame[s.game]) byGame[s.game] = {sessions: 0, rageSum: 0, dur: 0};
+        const g = byGame[s.game];
+        g.sessions++;
+        g.rageSum += s.angry_percentage;
+        g.dur += s.duration_seconds;
+    }
+    const rows = Object.entries(byGame)
+        .map(([name, g]) => ({name, avg: g.rageSum / g.sessions, sessions: g.sessions, dur: g.dur}))
+        .sort((a, b) => b.avg - a.avg);
+
+    const max = Math.max(...rows.map(r => r.avg), 1);
+    const html = rows.map((r, i) => {
+        const widthPct = (r.avg / 100) * 100;  // siempre normalizado a 100
+        return `
+        <div class="lb-row">
+            <span class="lb-rank">${String(i+1).padStart(2,'0')}</span>
+            <span class="lb-name">${escapeHtml(r.name)}</span>
+            <span class="lb-meta">${r.sessions}s · ${fmtTimeShort(r.dur)}</span>
+            <div class="lb-bar"><div class="fill" style="width:${widthPct}%"></div></div>
+            <span class="lb-pct">${r.avg.toFixed(1)}%</span>
+        </div>`;
+    }).join('');
+    $('#leaderboard').innerHTML = html;
+}
+
+// =========================================================================
+// TIMELINE CHART (Chart.js)
+// =========================================================================
+let timelineChart, distributionChart;
+
+function renderTimelineChart(d) {
+    if (typeof Chart === 'undefined') {
+        const el = document.getElementById('chart-timeline');
+        if (el && el.parentElement) {
+            el.parentElement.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text-3);font-family:var(--font-mono);font-size:11px">// Chart.js no disponible (sin internet?)</div>';
+        }
+        return;
+    }
+    const sessions = d.sessions;
+    const labels = sessions.map((s, i) => `#${i+1}`);
+    const rage  = sessions.map(s => s.angry_percentage);
+    const happy = sessions.map(s => s.happy_percentage);
+
+    if (timelineChart) timelineChart.destroy();
+    const ctx = $('#chart-timeline').getContext('2d');
+    timelineChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: 'Rage %',
+                    data: rage,
+                    borderColor: '#ff5260',
+                    backgroundColor: 'rgba(255,82,96,0.12)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.35,
+                    pointRadius: 0,
+                    pointHoverRadius: 5,
+                    pointBackgroundColor: '#ff5260',
+                },
+                {
+                    label: 'Happy %',
+                    data: happy,
+                    borderColor: '#7cd87a',
+                    backgroundColor: 'rgba(124,216,122,0.10)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.35,
+                    pointRadius: 0,
+                    pointHoverRadius: 5,
+                    pointBackgroundColor: '#7cd87a',
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+                y: {
+                    min: 0, max: 100,
+                    grid: { color: 'rgba(255,255,255,0.04)' },
+                    ticks: { callback: v => v + '%' },
+                },
+                x: {
+                    grid: { display: false },
+                    ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 12 },
+                },
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    align: 'end',
+                    labels: { usePointStyle: true, boxWidth: 8, font: {size: 11} },
+                },
+                tooltip: {
+                    backgroundColor: '#11161f',
+                    borderColor: '#232b3b',
+                    borderWidth: 1,
+                    titleColor: '#e8ecf3',
+                    bodyColor: '#a4adc1',
+                    padding: 10,
+                    callbacks: {
+                        title: (items) => {
+                            const i = items[0].dataIndex;
+                            const s = sessions[i];
+                            return `${s.game} · ${s.date.split(' ')[0]}`;
+                        },
+                    },
+                },
+            },
+        },
+    });
+}
+
+// =========================================================================
+// DISTRIBUTION DONUT (Chart.js)
+// =========================================================================
+function renderDistributionChart(d) {
+    if (typeof Chart === 'undefined') {
+        const el = document.getElementById('chart-distribution');
+        if (el && el.parentElement) {
+            el.parentElement.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text-3);font-family:var(--font-mono);font-size:11px">// Chart.js no disponible</div>';
+        }
+        return;
+    }
+    const sessions = d.sessions;
+    const totals = sessions.reduce((acc, s) => {
+        acc.rage    += s.angry_count;
+        acc.happy   += s.happy_count;
+        acc.neutral += s.neutral_count;
+        return acc;
+    }, {rage: 0, happy: 0, neutral: 0});
+
+    if (distributionChart) distributionChart.destroy();
+    const ctx = $('#chart-distribution').getContext('2d');
+    distributionChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Rage', 'Happy', 'Neutral'],
+            datasets: [{
+                data: [totals.rage, totals.happy, totals.neutral],
+                backgroundColor: ['#ff5260', '#7cd87a', '#3a4258'],
+                borderColor: '#11161f',
+                borderWidth: 3,
+                hoverOffset: 6,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '68%',
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { usePointStyle: true, boxWidth: 8, padding: 14, font: {size: 11} },
+                },
+                tooltip: {
+                    backgroundColor: '#11161f',
+                    borderColor: '#232b3b',
+                    borderWidth: 1,
+                    titleColor: '#e8ecf3',
+                    bodyColor: '#a4adc1',
+                    padding: 10,
+                    callbacks: {
+                        label: (item) => {
+                            const total = totals.rage + totals.happy + totals.neutral;
+                            const pct = total > 0 ? (item.parsed / total * 100).toFixed(1) : 0;
+                            return ` ${item.label}: ${item.parsed} (${pct}%)`;
+                        },
+                    },
+                },
+            },
+        },
+    });
+}
+
+// =========================================================================
+// HEATMAP hora × día
+// =========================================================================
+function renderHeatmap(d) {
+    const days = ['LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB', 'DOM'];
+    const grid = Array.from({length: 7}, () => Array.from({length: 24}, () => ({sum: 0, count: 0})));
+
+    for (const s of d.sessions) {
+        const dt = new Date(s.date.replace(' ', 'T'));
+        if (isNaN(dt)) continue;
+        const dayIdx = (dt.getDay() + 6) % 7;  // lun = 0
+        const hour = dt.getHours();
+        grid[dayIdx][hour].sum += s.angry_percentage;
+        grid[dayIdx][hour].count++;
+    }
+
+    // Cabecera de horas
+    const hourLabels = `<div class="heat-hour-label">` +
+        Array.from({length: 24}, (_, h) => `<div>${h % 6 === 0 ? h : ''}</div>`).join('') +
+        `</div>`;
+
+    const rowsHtml = grid.map((row, di) => {
+        const cells = row.map((cell, hi) => {
+            const avg = cell.count ? cell.sum / cell.count : -1;
+            let bg;
+            if (avg < 0) {
+                bg = 'var(--surface-3)';
+            } else {
+                // Mapeo 0..100 -> opacidad sobre el rojo
+                const t = Math.min(1, avg / 100);
+                bg = `rgba(255, 82, 96, ${0.15 + t * 0.85})`;
             }
-        }
+            const title = cell.count
+                ? `${days[di]} ${String(hi).padStart(2,'0')}h · ${avg.toFixed(0)}% rage · ${cell.count} sesión${cell.count === 1 ? '' : 'es'}`
+                : `${days[di]} ${String(hi).padStart(2,'0')}h · sin datos`;
+            return `<div class="heat-cell" style="background:${bg}" title="${title}"></div>`;
+        }).join('');
+        return `<div class="heat-day">${days[di]}</div>${cells}`;
+    }).join('');
 
-        function generateSampleData() {
-            return {
-                games: [
-                    {name: 'Dark Souls III', genre: 'RPG'},
-                    {name: 'League of Legends', genre: 'MOBA'},
-                    {name: 'FIFA 24', genre: 'Sports'},
-                    {name: 'Valorant', genre: 'FPS'}
-                ],
-                sessions: [
-                    {game: 'Dark Souls III', date: '2024-02-01 18:30', duration_seconds: 3600, happy_count: 5, angry_count: 25, neutral_count: 10, angry_percentage: 62.5, happy_percentage: 12.5, emotional_trend: 'angry'},
-                    {game: 'League of Legends', date: '2024-02-02 20:15', duration_seconds: 2700, happy_count: 8, angry_count: 18, neutral_count: 14, angry_percentage: 45, happy_percentage: 20, emotional_trend: 'angry'},
-                    {game: 'FIFA 24', date: '2024-02-02 22:00', duration_seconds: 1800, happy_count: 15, angry_count: 8, neutral_count: 7, angry_percentage: 26.7, happy_percentage: 50, emotional_trend: 'happy'},
-                    {game: 'Valorant', date: '2024-02-03 19:00', duration_seconds: 4200, happy_count: 12, angry_count: 20, neutral_count: 18, angry_percentage: 40, happy_percentage: 24, emotional_trend: 'neutral'}
-                ],
-                global_stats: {
-                    total_sessions: 4,
-                    total_playtime: 12300,
-                    total_rage_moments: 71,
-                    total_happy_moments: 40,
-                    most_played_game: 'Valorant',
-                    ragiest_game: 'Dark Souls III',
-                    happiest_game: 'FIFA 24'
-                }
-            };
-        }
+    const legend = `
+        <div class="heat-legend">
+            <span>// 0%</span>
+            <div class="scale">
+                ${[0.15, 0.30, 0.45, 0.60, 0.75, 0.90].map(t => `<div style="background:rgba(255,82,96,${t})"></div>`).join('')}
+            </div>
+            <span>100% rage</span>
+        </div>`;
 
-        function updateOverview(data) {
-            const stats = data.global_stats;
-            const totalEmotions = stats.total_rage_moments + stats.total_happy_moments;
-            
-            document.getElementById('total-sessions').textContent = stats.total_sessions;
-            document.getElementById('total-playtime').textContent = Math.floor(stats.total_playtime / 3600) + 'h';
-            document.getElementById('rage-index').textContent = Math.round((stats.total_rage_moments / totalEmotions) * 100) + '%';
-            document.getElementById('happy-index').textContent = Math.round((stats.total_happy_moments / totalEmotions) * 100) + '%';
+    $('#heatmap-wrap').innerHTML = hourLabels + `<div class="heatmap">` + rowsHtml + `</div>` + legend;
+}
 
-            // Pie Chart
-            const ctx1 = document.getElementById('emotionPieChart').getContext('2d');
-            new Chart(ctx1, {
-                type: 'doughnut',
-                data: {
-                    labels: ['😠 Angry', '😊 Happy', '😐 Neutral'],
-                    datasets: [{
-                        data: [
-                            stats.total_rage_moments,
-                            stats.total_happy_moments,
-                            totalEmotions - stats.total_rage_moments - stats.total_happy_moments
-                        ],
-                        backgroundColor: ['#ff006e', '#00ff00', '#888'],
-                        borderColor: '#151520',
-                        borderWidth: 3
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    plugins: {
-                        legend: {
-                            labels: { color: '#fff', font: { size: 14, family: 'Rajdhani' } }
-                        }
-                    }
-                }
-            });
+// =========================================================================
+// GAMES TAB
+// =========================================================================
+function renderGamesTab(d) {
+    const sessions = d.sessions;
+    const byGame = {};
+    for (const s of sessions) {
+        if (!byGame[s.game]) byGame[s.game] = {sessions: [], r: 0, h: 0, n: 0, peaks: 0, dur: 0};
+        const g = byGame[s.game];
+        g.sessions.push(s);
+        g.r += s.angry_count;
+        g.h += s.happy_count;
+        g.n += s.neutral_count;
+        g.peaks += (s.peak_rage_count || 0);
+        g.dur += s.duration_seconds;
+    }
 
-            // Timeline Chart
-            const ctx2 = document.getElementById('timelineChart').getContext('2d');
-            const sessions = data.sessions.slice(-10);
-            new Chart(ctx2, {
-                type: 'bar',
-                data: {
-                    labels: sessions.map(s => s.date.split(' ')[0]),
-                    datasets: [
-                        {
-                            label: '😠 Angry',
-                            data: sessions.map(s => s.angry_percentage),
-                            backgroundColor: 'rgba(255, 0, 110, 0.7)',
-                            borderColor: '#ff006e',
-                            borderWidth: 2
-                        },
-                        {
-                            label: '😊 Happy',
-                            data: sessions.map(s => s.happy_percentage),
-                            backgroundColor: 'rgba(0, 255, 0, 0.7)',
-                            borderColor: '#00ff00',
-                            borderWidth: 2
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    scales: {
-                        y: { 
-                            ticks: { color: '#888' },
-                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
-                        },
-                        x: { 
-                            ticks: { color: '#888' },
-                            grid: { display: false }
-                        }
-                    },
-                    plugins: {
-                        legend: {
-                            labels: { color: '#fff', font: { size: 14, family: 'Rajdhani' } }
-                        }
-                    }
-                }
-            });
-        }
+    // Anexar info de games.csv si la hay
+    const gamesMeta = {};
+    for (const g of (d.games || [])) gamesMeta[g.name] = g;
 
-        function updateGamesTab(data) {
-            const container = document.getElementById('games-container');
-            container.innerHTML = '';
+    const cards = Object.entries(byGame).sort((a, b) => b[1].sessions.length - a[1].sessions.length).map(([name, g]) => {
+        const total = g.r + g.h + g.n;
+        const ragePct  = total ? g.r / total * 100 : 0;
+        const happyPct = total ? g.h / total * 100 : 0;
+        const neutPct  = total ? g.n / total * 100 : 0;
+        const last = g.sessions[g.sessions.length - 1];
+        const trend = last.emotional_trend;
+        const trendIcon = trend === 'happy' ? '↑' : trend === 'angry' ? '↓' : '→';
+        const genre = gamesMeta[name]?.genre || '—';
+        const sparkValues = g.sessions.slice(-10).map(s => s.angry_percentage);
 
-            data.games.forEach(game => {
-                const sessions = data.sessions.filter(s => s.game === game.name);
-                const totalAngry = sessions.reduce((sum, s) => sum + s.angry_count, 0);
-                const totalHappy = sessions.reduce((sum, s) => sum + s.happy_count, 0);
-                const totalNeutral = sessions.reduce((sum, s) => sum + s.neutral_count, 0);
-                const total = totalAngry + totalHappy + totalNeutral;
-                const ragePercent = total > 0 ? Math.round((totalAngry / total) * 100) : 0;
+        return `
+        <div class="game-card">
+            <div class="gc-head">
+                <div>
+                    <div class="gc-title">${escapeHtml(name)}</div>
+                    <div class="gc-genre">${escapeHtml(genre)} · ${g.sessions.length} sesion${g.sessions.length === 1 ? '' : 'es'}</div>
+                </div>
+                <div class="gc-trend ${trend}" title="Tendencia última sesión: ${trend}">${trendIcon}</div>
+            </div>
+            <div class="gc-donut">
+                ${donutSvg(ragePct, happyPct, neutPct)}
+                <div class="gc-stats">
+                    <div class="row"><span>Rage</span><span class="v" style="color:var(--rage)">${ragePct.toFixed(1)}%</span></div>
+                    <div class="row"><span>Happy</span><span class="v" style="color:var(--happy)">${happyPct.toFixed(1)}%</span></div>
+                    <div class="row"><span>Neutral</span><span class="v">${neutPct.toFixed(1)}%</span></div>
+                    <div class="row"><span>Peaks</span><span class="v">${g.peaks}</span></div>
+                    <div class="row"><span>Tiempo</span><span class="v">${fmtTimeShort(g.dur)}</span></div>
+                </div>
+            </div>
+            <div class="gc-spark">
+                <div class="gc-spark-label">// Rage % · últimas ${sparkValues.length} sesion${sparkValues.length === 1 ? '' : 'es'}</div>
+                ${drawMiniSparklineFull(sparkValues, '#ff5260')}
+            </div>
+        </div>`;
+    }).join('');
 
-                const card = document.createElement('div');
-                card.className = 'game-card';
-                card.innerHTML = `
-                    <div class="game-title">${game.name}</div>
-                    <div class="game-stats">
-                        <div class="mini-stat">
-                            <span class="mini-stat-value" style="color: #ff006e;">${totalAngry}</span>
-                            <span class="mini-stat-label">Angry</span>
-                        </div>
-                        <div class="mini-stat">
-                            <span class="mini-stat-value" style="color: #00ff00;">${totalHappy}</span>
-                            <span class="mini-stat-label">Happy</span>
-                        </div>
-                        <div class="mini-stat">
-                            <span class="mini-stat-value" style="color: #888;">${totalNeutral}</span>
-                            <span class="mini-stat-label">Neutral</span>
-                        </div>
-                    </div>
-                    <div class="rage-bar">
-                        <div class="rage-fill" style="width: ${ragePercent}%"></div>
-                    </div>
-                    <div style="margin-top: 10px; text-align: right; color: #888; font-size: 0.9rem;">
-                        Rage Index: ${ragePercent}%
-                    </div>
-                `;
-                container.appendChild(card);
-            });
-        }
+    $('#games-grid').innerHTML = cards;
+}
 
-        function updateSessionsTab(data) {
-            const tbody = document.getElementById('sessions-tbody');
-            tbody.innerHTML = '';
+function donutSvg(rage, happy, neutral) {
+    // Mini donut SVG manual (más control visual que Chart.js para tamaños pequeños)
+    const r = 32, cx = 40, cy = 40;
+    const C = 2 * Math.PI * r;
+    const segs = [
+        {pct: rage, color: '#ff5260'},
+        {pct: happy, color: '#7cd87a'},
+        {pct: neutral, color: '#3a4258'},
+    ];
+    let offset = 0;
+    const paths = segs.map(s => {
+        const len = (s.pct / 100) * C;
+        const dasharray = `${len} ${C - len}`;
+        const dashoffset = -offset;
+        offset += len;
+        return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${s.color}" stroke-width="10" stroke-dasharray="${dasharray}" stroke-dashoffset="${dashoffset}" transform="rotate(-90 ${cx} ${cy})"/>`;
+    }).join('');
+    return `<svg width="80" height="80" viewBox="0 0 80 80">${paths}</svg>`;
+}
 
-            data.sessions.slice().reverse().forEach(session => {
-                const row = document.createElement('tr');
-                const duration = Math.floor(session.duration_seconds / 60);
-                
-                let trendBadge = 'neutral';
-                if (session.emotional_trend === 'angry') trendBadge = 'angry';
-                if (session.emotional_trend === 'happy') trendBadge = 'happy';
+function drawMiniSparklineFull(values, color) {
+    if (!values.length) return '<svg width="100%" height="40"></svg>';
+    const w = 320, h = 40;
+    const pad = 2;
+    const max = 100;
+    const step = values.length > 1 ? (w - pad * 2) / (values.length - 1) : 0;
+    const pts = values.map((v, i) => [pad + i * step, pad + (h - pad * 2) * (1 - v / max)]);
+    const line = pts.map((p, i) => (i === 0 ? `M${p[0]},${p[1]}` : `L${p[0]},${p[1]}`)).join('');
+    const area = line + ` L${pts[pts.length-1][0]},${h} L${pts[0][0]},${h} Z`;
+    return `
+    <svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+        <defs><linearGradient id="sp${color.slice(1)}" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="${color}" stop-opacity="0.4"/>
+            <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
+        </linearGradient></defs>
+        <path d="${area}" fill="url(#sp${color.slice(1)})"/>
+        <path d="${line}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round"/>
+        ${pts.map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="2" fill="${color}"/>`).join('')}
+    </svg>`;
+}
 
-                row.innerHTML = `
-                    <td>${session.date}</td>
-                    <td><strong>${session.game}</strong></td>
-                    <td>${duration}m</td>
-                    <td>
-                        <span style="color: #ff006e;">😠${session.angry_count}</span> |
-                        <span style="color: #00ff00;">😊${session.happy_count}</span> |
-                        <span style="color: #888;">😐${session.neutral_count}</span>
-                    </td>
-                    <td><span class="emotion-badge badge-${trendBadge}">${session.emotional_trend}</span></td>
-                `;
-                tbody.appendChild(row);
-            });
-        }
+// =========================================================================
+// LOG TAB
+// =========================================================================
+function renderLogTab(d) {
+    const games = Array.from(new Set(d.sessions.map(s => s.game)));
+    const filterRow = $('#filter-row');
+    filterRow.innerHTML = `<span class="label">// Filtrar:</span><button class="chip ${STATE.logFilter === 'all' ? 'active' : ''}" data-filter="all">Todas</button>` +
+        games.map(g => `<button class="chip ${STATE.logFilter === g ? 'active' : ''}" data-filter="${escapeAttr(g)}">${escapeHtml(g)}</button>`).join('');
 
-        function updateAnalyticsTab(data) {
-            const stats = data.global_stats;
-            
-            document.getElementById('ragiest-game').textContent = stats.ragiest_game;
-            document.getElementById('happiest-game').textContent = stats.happiest_game;
-            document.getElementById('most-played').textContent = stats.most_played_game;
+    filterRow.querySelectorAll('.chip').forEach(c => {
+        c.addEventListener('click', () => {
+            STATE.logFilter = c.dataset.filter;
+            renderLogTab(STATE.raw);
+        });
+    });
 
-            // Rage Comparison Chart
-            const ctx3 = document.getElementById('rageComparisonChart').getContext('2d');
-            const gameRages = {};
-            data.sessions.forEach(s => {
-                if (!gameRages[s.game]) gameRages[s.game] = [];
-                gameRages[s.game].push(s.angry_percentage);
-            });
+    const filtered = STATE.logFilter === 'all'
+        ? d.sessions
+        : d.sessions.filter(s => s.game === STATE.logFilter);
 
-            const avgRages = Object.keys(gameRages).map(game => ({
-                game,
-                avg: gameRages[game].reduce((a, b) => a + b, 0) / gameRages[game].length
-            }));
+    const rows = filtered.slice().reverse().map(s => {
+        const date = s.date;
+        const dur  = fmtTime(s.duration_seconds);
+        const maxBar = 100;
+        return `<tr>
+            <td>${date}</td>
+            <td class="game-cell">${escapeHtml(s.game)}</td>
+            <td>${dur}</td>
+            <td>
+                <span class="rage-cell">${s.angry_percentage.toFixed(0)}%</span>
+                <span class="mini-bar"><div style="width:${Math.min(100, s.angry_percentage)}%"></div></span>
+            </td>
+            <td>
+                <span class="happy-cell">${s.happy_percentage.toFixed(0)}%</span>
+                <span class="mini-bar happy"><div style="width:${Math.min(100, s.happy_percentage)}%"></div></span>
+            </td>
+            <td>${s.peak_rage_count || 0}</td>
+            <td><span class="badge ${s.emotional_trend}">${s.emotional_trend}</span></td>
+        </tr>`;
+    }).join('');
 
-            new Chart(ctx3, {
-                type: 'bar',
-                data: {
-                    labels: avgRages.map(g => g.game),
-                    datasets: [{
-                        label: 'Average Rage %',
-                        data: avgRages.map(g => g.avg),
-                        backgroundColor: 'rgba(255, 0, 110, 0.7)',
-                        borderColor: '#ff006e',
-                        borderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    indexAxis: 'y',
-                    scales: {
-                        x: { 
-                            ticks: { color: '#888' },
-                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
-                        },
-                        y: { 
-                            ticks: { color: '#fff', font: { size: 14 } },
-                            grid: { display: false }
-                        }
-                    },
-                    plugins: {
-                        legend: { display: false }
-                    }
-                }
-            });
+    $('#log-tbody').innerHTML = rows || '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-4)">Sin sesiones para este filtro</td></tr>';
+}
 
-            // Trend Chart
-            const ctx4 = document.getElementById('trendChart').getContext('2d');
-            const sessions = data.sessions.slice(-15);
-            new Chart(ctx4, {
-                type: 'line',
-                data: {
-                    labels: sessions.map((s, i) => `Session ${i + 1}`),
-                    datasets: [
-                        {
-                            label: 'Rage %',
-                            data: sessions.map(s => s.angry_percentage),
-                            borderColor: '#ff006e',
-                            backgroundColor: 'rgba(255, 0, 110, 0.1)',
-                            tension: 0.4,
-                            fill: true
-                        },
-                        {
-                            label: 'Happy %',
-                            data: sessions.map(s => s.happy_percentage),
-                            borderColor: '#00ff00',
-                            backgroundColor: 'rgba(0, 255, 0, 0.1)',
-                            tension: 0.4,
-                            fill: true
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    scales: {
-                        y: { 
-                            ticks: { color: '#888' },
-                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
-                        },
-                        x: { 
-                            ticks: { color: '#888' },
-                            grid: { display: false }
-                        }
-                    },
-                    plugins: {
-                        legend: {
-                            labels: { color: '#fff', font: { size: 14, family: 'Rajdhani' } }
-                        }
-                    }
-                }
-            });
-        }
+// =========================================================================
+// TABS NAVIGATION
+// =========================================================================
+$$('.tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        $$('.tab').forEach(t => t.classList.toggle('active', t === btn));
+        $$('.tab-panel').forEach(p => p.classList.toggle('hidden', p.id !== `tab-${tab}`));
+    });
+});
 
-        // Load data on page load
-        window.addEventListener('DOMContentLoaded', loadData);
-    </script>
+// =========================================================================
+// HELPERS
+// =========================================================================
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function escapeAttr(s) { return escapeHtml(s); }
+
+// =========================================================================
+// INIT + AUTO-REFRESH
+// =========================================================================
+loadData();
+setInterval(loadData, 15000);  // refresca cada 15s para captar sesiones nuevas
+</script>
 </body>
 </html>
