@@ -71,19 +71,7 @@ def detect_face_and_smile():
             2,
         )
 
-        # contador de veces que se sonrie
-
-        cv2.countSmaile = len(smiles)
-        cv2.putText(
-            frame,
-            f"Smile Count: {cv2.countSmaile}",
-            (20, 80),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            (0, 255, 0),
-            2,
-        )
-
+       
         cv2.imshow("Emotion Detection", frame)
 
         # Salir al pulsar 'q'
