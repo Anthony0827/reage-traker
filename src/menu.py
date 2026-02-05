@@ -1,4 +1,4 @@
-from data_manager import DataManager
+from src.data_manager import DataManager
 
 
 class Menu:
@@ -48,7 +48,7 @@ class Menu:
         games = self.data_manager.get_games()
         
         if not games:
-            print("\n📭 No hay juegos registrados todavía.")
+            print("\n🔭 No hay juegos registrados todavía.")
             print("Añade un juego nuevo para comenzar.")
             input("\nPresiona Enter para continuar...")
             return self.main_menu()
@@ -57,8 +57,9 @@ class Menu:
             self.clear_screen()
             self.print_header("🎯 Seleccionar Juego")
             
-            for i, game in enumerate(games, 1):
-                print(f"{i}. {game}")
+            # games es una lista de strings simples
+            for i, game_name in enumerate(games, 1):
+                print(f"{i}. {game_name}")
             print(f"{len(games) + 1}. ⬅️  Volver al menú principal")
             print()
             
@@ -123,15 +124,16 @@ class Menu:
             games = self.data_manager.get_games()
             
             if not games:
-                print("📭 No hay datos todavía.")
+                print("🔭 No hay datos todavía.")
                 input("\nPresiona Enter para volver...")
                 return
             
             print("Selecciona un juego para ver sus estadísticas:\n")
             
-            for i, game in enumerate(games, 1):
-                stats = self.data_manager.get_game_stats(game)
-                print(f"{i}. {game}")
+            # games es una lista de strings
+            for i, game_name in enumerate(games, 1):
+                stats = self.data_manager.get_game_stats(game_name)
+                print(f"{i}. {game_name}")
                 if stats['total_sessions'] > 0:
                     print(f"   └─ {stats['total_sessions']} sesiones | "
                           f"😠 {stats['total_angry']} | 😊 {stats['total_happy']}")
@@ -144,7 +146,8 @@ class Menu:
             try:
                 choice_num = int(choice)
                 if 1 <= choice_num <= len(games):
-                    self.show_game_details(games[choice_num - 1])
+                    game_name = games[choice_num - 1]
+                    self.show_game_details(game_name)
                 elif choice_num == len(games) + 1:
                     return
                 else:
@@ -180,10 +183,10 @@ class Menu:
             
             print(f"\n--- Últimas 5 sesiones ---")
             for session in sessions[-5:]:
-                date = session['date']
-                duration = int(session['duration_seconds'])
-                angry = session['angry_count']
-                happy = session['happy_count']
+                date = session.get('date', 'N/A')
+                duration = int(session.get('duration_seconds', 0))
+                angry = session.get('angry_count', 0)
+                happy = session.get('happy_count', 0)
                 print(f"  {date} | {duration // 60}:{duration % 60:02d} | 😠 {angry} 😊 {happy}")
         
         input("\nPresiona Enter para volver...")

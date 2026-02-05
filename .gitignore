@@ -1,29 +1,31 @@
-# ===== Entorno virtual =====
-
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
 venv/
-.env/
+env/
+ENV/
 
-# ===== Python =====
-
-**pycache**/
-*.pyc
-*.pyo
-*.pyd
-
-# ===== Datos generados =====
-
+# Datos locales
 data/*.csv
+!data/.gitkeep
+config.json
 
-# ===== Sistema =====
+# Backups
+_backup_old_files/
 
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
 .DS_Store
 Thumbs.db
 
-# ===== IDEs / Editores =====
-
-.vscode/
-.idea/
-
-# ===== Logs =====
-
+# Logs
 *.log

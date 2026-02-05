@@ -236,7 +236,7 @@ class EmotionDetector:
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 165, 0), 1)
         
         # Contadores - ENFATIZAR EL SISTEMA BINARIO
-        cv2.putText(frame, "--- CONTADORES (Binario) ---", (20, 170),
+        cv2.putText(frame, "--- CONTADORES ---", (20, 170),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
         
         # Calcular total real (happy + angry, neutral casi ignorado)

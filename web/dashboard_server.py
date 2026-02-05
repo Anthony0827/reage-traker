@@ -33,7 +33,7 @@ class RageTrackerHandler(http.server.SimpleHTTPRequestHandler):
     def serve_dashboard(self):
         """Sirve el archivo dashboard.html"""
         try:
-            with open('dashboard.html', 'r', encoding='utf-8') as f:
+            with open('web/dashboard.html', 'r', encoding='utf-8') as f:
                 content = f.read()
                 
             self.send_response(200)
@@ -206,7 +206,7 @@ if __name__ == "__main__":
     import sys
     
     # Verificar que existan los archivos necesarios
-    if not os.path.exists('dashboard.html'):
+    if not os.path.exists('web/dashboard.html'):
         print("❌ Error: No se encuentra dashboard.html")
         print("   Asegúrate de que el archivo esté en el mismo directorio.")
         sys.exit(1)
