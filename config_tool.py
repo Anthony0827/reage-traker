@@ -12,33 +12,32 @@ class ConfigTool:
     def __init__(self):
         self.config_file = "config.json"
         self.default_config = {
-    "detection": {
-        # --- FELICIDAD (única vía para no estar enfadado) ---
-        "smile_scale_factor": 1.9,
-        "smile_min_neighbors": 22,
-        "smile_min_size": [30, 30],
-
-        # --- OJOS ---
-        "eye_scale_factor": 1.1,
-        "eye_min_neighbors": 8,
-        "eye_min_size": [15, 15],
-
-        # --- ENFADO (estado por defecto sin sonrisa) ---
-        "brow_angry_threshold": 90,        # cejas casi irrelevantes
-        "brow_very_angry_threshold": 78,
-        "mouth_tense_threshold": 88,       # boca relajada aún puede ser enfado
-
-        # --- DINÁMICA DE ESTADOS ---
-        "frames_between_counts": 14,       # reacciona más rápido
-        "emotion_confirmation_frames": 6   # neutro dura poco
-    },
-    "display": {
-        "show_confidence": True,
-        "show_debug_info": False,
-        "overlay_opacity": 0.7
-    }
-}
-
+            "detection": {
+                # --- FELICIDAD (única vía para no estar enfadado) ---
+                "smile_scale_factor": 1.9,
+                "smile_min_neighbors": 22,
+                "smile_min_size": [30, 30],
+                
+                # --- OJOS ---
+                "eye_scale_factor": 1.1,
+                "eye_min_neighbors": 8,
+                "eye_min_size": [15, 15],
+                
+                # --- ENFADO (estado por defecto sin sonrisa) ---
+                "brow_angry_threshold": 90,        # cejas casi irrelevantes
+                "brow_very_angry_threshold": 78,
+                "mouth_tense_threshold": 88,       # boca relajada aún puede ser enfado
+                
+                # --- DINÁMICA DE ESTADOS ---
+                "frames_between_counts": 14,       # reacciona más rápido
+                "emotion_confirmation_frames": 6   # neutro dura poco
+            },
+            "display": {
+                "show_confidence": True,
+                "show_debug_info": False,
+                "overlay_opacity": 0.7
+            }
+        }
         self.load_config()
     
     def load_config(self):
