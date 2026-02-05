@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAGE TRACKER - Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --neon-red: #ff006e;
+            --neon-blue: #00f5ff;
+            --neon-purple: #b000ff;
+            --dark-bg: #0a0a0f;
+            --card-bg: #151520;
+            --border-glow: rgba(0, 245, 255, 0.3);
+        }
+
+        body {
+            font-family: 'Rajdhani', sans-serif;
+            background: var(--dark-bg);
+            color: #fff;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Animated background grid */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(0, 245, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 245, 255, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            animation: gridMove 20s linear infinite;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        @keyframes gridMove {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(50px, 50px); }
+        }
+
+        /* Glowing orbs */
+        .orb {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.15;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .orb-1 {
+            width: 400px;
+            height: 400px;
+            background: var(--neon-red);
+            top: -100px;
+            right: -100px;
+            animation: float 15s ease-in-out infinite;
+        }
+
+        .orb-2 {
+            width: 500px;
+            height: 500px;
+            background: var(--neon-purple);
+            bottom: -150px;
+            left: -150px;
+            animation: float 20s ease-in-out infinite reverse;
+        }
+
+        .orb-3 {
+            width: 300px;
+            height: 300px;
+            background: var(--neon-blue);
+            top: 50%;
+            left: 50%;
+            animation: pulse 10s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(50px, -50px) scale(1.1); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.1; }
+            50% { transform: translate(-50%, -50%) scale(1.3); opacity: 0.2; }
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Header */
+        header {
+            text-align: center;
+            padding: 40px 20px;
+            margin-bottom: 40px;
+            position: relative;
+        }
+
+        h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 4rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--neon-blue), var(--neon-purple), var(--neon-red));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-transform: uppercase;
+            letter-spacing: 8px;
+            margin-bottom: 10px;
+            animation: glowPulse 3s ease-in-out infinite;
+            text-shadow: 0 0 20px rgba(0, 245, 255, 0.5);
+        }
+
+        @keyframes glowPulse {
+            0%, 100% { filter: brightness(1) drop-shadow(0 0 20px rgba(0, 245, 255, 0.5)); }
+            50% { filter: brightness(1.3) drop-shadow(0 0 40px rgba(255, 0, 110, 0.7)); }
+        }
+
+        .subtitle {
+            font-size: 1.3rem;
+            color: #888;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+
+        /* Navigation Tabs */
+        .nav-tabs {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 40px;
+            flex-wrap: wrap;
+        }
+
+        .tab-btn {
+            background: var(--card-bg);
+            border: 2px solid var(--border-glow);
+            color: #fff;
+            padding: 15px 40px;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .tab-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 245, 255, 0.3), transparent);
+            transition: left 0.5s;
+        }
+
+        .tab-btn:hover::before {
+            left: 100%;
+        }
+
+        .tab-btn:hover {
+            border-color: var(--neon-blue);
+            box-shadow: 0 0 20px var(--border-glow);
+            transform: translateY(-2px);
+        }
+
+        .tab-btn.active {
+            background: linear-gradient(135deg, var(--neon-blue), var(--neon-purple));
+            border-color: var(--neon-blue);
+            box-shadow: 0 0 30px rgba(0, 245, 255, 0.6);
+        }
+
+        /* Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-bottom: 40px;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 15px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, var(--neon-blue), var(--neon-purple), var(--neon-red));
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--border-glow);
+            box-shadow: 0 10px 40px rgba(0, 245, 255, 0.2);
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 10px;
+        }
+
+        .stat-value {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 3rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--neon-blue), var(--neon-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+
+        .stat-subtext {
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        /* Chart Container */
+        .chart-container {
+            background: var(--card-bg);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            position: relative;
+        }
+
+        .chart-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, var(--neon-red), var(--neon-purple), var(--neon-blue));
+        }
+
+        .chart-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: var(--neon-blue);
+            text-transform: uppercase;
+            letter-spacing: 3px;
+        }
+
+        /* Game Cards */
+        .game-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 25px;
+        }
+
+        .game-card {
+            background: var(--card-bg);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 25px;
+            position: relative;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .game-card::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, var(--neon-red), var(--neon-blue));
+            transform: scaleX(0);
+            transition: transform 0.3s ease;
+        }
+
+        .game-card:hover::after {
+            transform: scaleX(1);
+        }
+
+        .game-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--neon-blue);
+            box-shadow: 0 10px 40px rgba(0, 245, 255, 0.3);
+        }
+
+        .game-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 15px;
+            color: #fff;
+        }
+
+        .game-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .mini-stat {
+            text-align: center;
+        }
+
+        .mini-stat-value {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            display: block;
+        }
+
+        .mini-stat-label {
+            font-size: 0.75rem;
+            color: #666;
+            text-transform: uppercase;
+            margin-top: 5px;
+        }
+
+        .rage-bar {
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 15px;
+        }
+
+        .rage-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--neon-blue), var(--neon-red));
+            transition: width 0.5s ease;
+        }
+
+        /* Sessions Table */
+        .sessions-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .sessions-table th {
+            background: rgba(0, 245, 255, 0.1);
+            padding: 15px;
+            text-align: left;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 0.9rem;
+            letter-spacing: 2px;
+            border-bottom: 2px solid var(--neon-blue);
+        }
+
+        .sessions-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .sessions-table tr:hover {
+            background: rgba(0, 245, 255, 0.05);
+        }
+
+        .emotion-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .badge-happy {
+            background: rgba(0, 255, 0, 0.2);
+            color: #0f0;
+            border: 1px solid #0f0;
+        }
+
+        .badge-angry {
+            background: rgba(255, 0, 110, 0.2);
+            color: var(--neon-red);
+            border: 1px solid var(--neon-red);
+        }
+
+        .badge-neutral {
+            background: rgba(255, 255, 255, 0.1);
+            color: #888;
+            border: 1px solid #888;
+        }
+
+        /* Loading Animation */
+        .loading {
+            text-align: center;
+            padding: 60px;
+        }
+
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(0, 245, 255, 0.2);
+            border-top-color: var(--neon-blue);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2.5rem;
+                letter-spacing: 4px;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .game-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .nav-tabs {
+                flex-direction: column;
+                align-items: stretch;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+
+    <div class="container">
+        <header>
+            <h1>RAGE TRACKER</h1>
+            <p class="subtitle">Gaming Emotion Analytics</p>
+        </header>
+
+        <div class="nav-tabs">
+            <button class="tab-btn active" onclick="showTab('overview')">Overview</button>
+            <button class="tab-btn" onclick="showTab('games')">Games</button>
+            <button class="tab-btn" onclick="showTab('sessions')">Sessions</button>
+            <button class="tab-btn" onclick="showTab('analytics')">Analytics</button>
+        </div>
+
+        <!-- Overview Tab -->
+        <div id="overview-tab" class="tab-content">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Total Sessions</div>
+                    <div class="stat-value" id="total-sessions">0</div>
+                    <div class="stat-subtext">Gaming sessions tracked</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Total Playtime</div>
+                    <div class="stat-value" id="total-playtime">0h</div>
+                    <div class="stat-subtext">Hours in-game</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Rage Index</div>
+                    <div class="stat-value" id="rage-index">0%</div>
+                    <div class="stat-subtext">Overall anger percentage</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Happy Index</div>
+                    <div class="stat-value" id="happy-index">0%</div>
+                    <div class="stat-subtext">Overall happiness percentage</div>
+                </div>
+            </div>
+
+            <div class="chart-container">
+    <h3 class="chart-title">Emotion Distribution</h3>
+    <div style="max-width: 400px; margin: 0 auto;">
+        <canvas id="emotionPieChart"></canvas>
+    </div>
+</div>
+            <div class="chart-container">
+                <h3 class="chart-title">Session Timeline</h3>
+                <canvas id="timelineChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Games Tab -->
+        <div id="games-tab" class="tab-content hidden">
+            <div class="game-grid" id="games-container">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading games...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sessions Tab -->
+        <div id="sessions-tab" class="tab-content hidden">
+            <div class="chart-container">
+                <h3 class="chart-title">Recent Sessions</h3>
+                <table class="sessions-table" id="sessions-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Game</th>
+                            <th>Duration</th>
+                            <th>Emotions</th>
+                            <th>Trend</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sessions-tbody">
+                        <tr><td colspan="5" class="loading">Loading sessions...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Analytics Tab -->
+        <div id="analytics-tab" class="tab-content hidden">
+            <div class="chart-container">
+                <h3 class="chart-title">Rage Analysis by Game</h3>
+                <canvas id="rageComparisonChart"></canvas>
+            </div>
+
+            <div class="chart-container">
+                <h3 class="chart-title">Emotion Trends Over Time</h3>
+                <canvas id="trendChart"></canvas>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Ragiest Game</div>
+                    <div class="stat-value" style="font-size: 1.5rem;" id="ragiest-game">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Happiest Game</div>
+                    <div class="stat-value" style="font-size: 1.5rem;" id="happiest-game">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Most Played</div>
+                    <div class="stat-value" style="font-size: 1.5rem;" id="most-played">-</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Sample data - Replace with actual data from CSV/JSON
+        let gameData = {};
+        let sessionsData = [];
+
+        // Tab switching
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.add('hidden');
+            });
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            document.getElementById(tabName + '-tab').classList.remove('hidden');
+            event.target.classList.add('active');
+        }
+
+        // Load data from JSON/CSV
+        async function loadData() {
+            try {
+                // Try to load real data from API
+                const response = await fetch('/api/data');
+                let data;
+                
+                if (response.ok) {
+                    data = await response.json();
+                    console.log('✅ Datos reales cargados desde la API');
+                } else {
+                    // Fallback to sample data if API fails
+                    console.log('⚠️  API no disponible, usando datos de ejemplo');
+                    data = generateSampleData();
+                }
+                
+                // If no sessions exist, use sample data
+                if (!data.sessions || data.sessions.length === 0) {
+                    console.log('📭 No hay sesiones, mostrando datos de ejemplo');
+                    data = generateSampleData();
+                }
+                
+                updateOverview(data);
+                updateGamesTab(data);
+                updateSessionsTab(data);
+                updateAnalyticsTab(data);
+            } catch (error) {
+                console.error('Error loading data:', error);
+                // Use sample data on error
+                const data = generateSampleData();
+                updateOverview(data);
+                updateGamesTab(data);
+                updateSessionsTab(data);
+                updateAnalyticsTab(data);
+            }
+        }
+
+        function generateSampleData() {
+            return {
+                games: [
+                    {name: 'Dark Souls III', genre: 'RPG'},
+                    {name: 'League of Legends', genre: 'MOBA'},
+                    {name: 'FIFA 24', genre: 'Sports'},
+                    {name: 'Valorant', genre: 'FPS'}
+                ],
+                sessions: [
+                    {game: 'Dark Souls III', date: '2024-02-01 18:30', duration_seconds: 3600, happy_count: 5, angry_count: 25, neutral_count: 10, angry_percentage: 62.5, happy_percentage: 12.5, emotional_trend: 'angry'},
+                    {game: 'League of Legends', date: '2024-02-02 20:15', duration_seconds: 2700, happy_count: 8, angry_count: 18, neutral_count: 14, angry_percentage: 45, happy_percentage: 20, emotional_trend: 'angry'},
+                    {game: 'FIFA 24', date: '2024-02-02 22:00', duration_seconds: 1800, happy_count: 15, angry_count: 8, neutral_count: 7, angry_percentage: 26.7, happy_percentage: 50, emotional_trend: 'happy'},
+                    {game: 'Valorant', date: '2024-02-03 19:00', duration_seconds: 4200, happy_count: 12, angry_count: 20, neutral_count: 18, angry_percentage: 40, happy_percentage: 24, emotional_trend: 'neutral'}
+                ],
+                global_stats: {
+                    total_sessions: 4,
+                    total_playtime: 12300,
+                    total_rage_moments: 71,
+                    total_happy_moments: 40,
+                    most_played_game: 'Valorant',
+                    ragiest_game: 'Dark Souls III',
+                    happiest_game: 'FIFA 24'
+                }
+            };
+        }
+
+        function updateOverview(data) {
+            const stats = data.global_stats;
+            const totalEmotions = stats.total_rage_moments + stats.total_happy_moments;
+            
+            document.getElementById('total-sessions').textContent = stats.total_sessions;
+            document.getElementById('total-playtime').textContent = Math.floor(stats.total_playtime / 3600) + 'h';
+            document.getElementById('rage-index').textContent = Math.round((stats.total_rage_moments / totalEmotions) * 100) + '%';
+            document.getElementById('happy-index').textContent = Math.round((stats.total_happy_moments / totalEmotions) * 100) + '%';
+
+            // Pie Chart
+            const ctx1 = document.getElementById('emotionPieChart').getContext('2d');
+            new Chart(ctx1, {
+                type: 'doughnut',
+                data: {
+                    labels: ['😠 Angry', '😊 Happy', '😐 Neutral'],
+                    datasets: [{
+                        data: [
+                            stats.total_rage_moments,
+                            stats.total_happy_moments,
+                            totalEmotions - stats.total_rage_moments - stats.total_happy_moments
+                        ],
+                        backgroundColor: ['#ff006e', '#00ff00', '#888'],
+                        borderColor: '#151520',
+                        borderWidth: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#fff', font: { size: 14, family: 'Rajdhani' } }
+                        }
+                    }
+                }
+            });
+
+            // Timeline Chart
+            const ctx2 = document.getElementById('timelineChart').getContext('2d');
+            const sessions = data.sessions.slice(-10);
+            new Chart(ctx2, {
+                type: 'bar',
+                data: {
+                    labels: sessions.map(s => s.date.split(' ')[0]),
+                    datasets: [
+                        {
+                            label: '😠 Angry',
+                            data: sessions.map(s => s.angry_percentage),
+                            backgroundColor: 'rgba(255, 0, 110, 0.7)',
+                            borderColor: '#ff006e',
+                            borderWidth: 2
+                        },
+                        {
+                            label: '😊 Happy',
+                            data: sessions.map(s => s.happy_percentage),
+                            backgroundColor: 'rgba(0, 255, 0, 0.7)',
+                            borderColor: '#00ff00',
+                            borderWidth: 2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: { 
+                            ticks: { color: '#888' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        },
+                        x: { 
+                            ticks: { color: '#888' },
+                            grid: { display: false }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: { color: '#fff', font: { size: 14, family: 'Rajdhani' } }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateGamesTab(data) {
+            const container = document.getElementById('games-container');
+            container.innerHTML = '';
+
+            data.games.forEach(game => {
+                const sessions = data.sessions.filter(s => s.game === game.name);
+                const totalAngry = sessions.reduce((sum, s) => sum + s.angry_count, 0);
+                const totalHappy = sessions.reduce((sum, s) => sum + s.happy_count, 0);
+                const totalNeutral = sessions.reduce((sum, s) => sum + s.neutral_count, 0);
+                const total = totalAngry + totalHappy + totalNeutral;
+                const ragePercent = total > 0 ? Math.round((totalAngry / total) * 100) : 0;
+
+                const card = document.createElement('div');
+                card.className = 'game-card';
+                card.innerHTML = `
+                    <div class="game-title">${game.name}</div>
+                    <div class="game-stats">
+                        <div class="mini-stat">
+                            <span class="mini-stat-value" style="color: #ff006e;">${totalAngry}</span>
+                            <span class="mini-stat-label">Angry</span>
+                        </div>
+                        <div class="mini-stat">
+                            <span class="mini-stat-value" style="color: #00ff00;">${totalHappy}</span>
+                            <span class="mini-stat-label">Happy</span>
+                        </div>
+                        <div class="mini-stat">
+                            <span class="mini-stat-value" style="color: #888;">${totalNeutral}</span>
+                            <span class="mini-stat-label">Neutral</span>
+                        </div>
+                    </div>
+                    <div class="rage-bar">
+                        <div class="rage-fill" style="width: ${ragePercent}%"></div>
+                    </div>
+                    <div style="margin-top: 10px; text-align: right; color: #888; font-size: 0.9rem;">
+                        Rage Index: ${ragePercent}%
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function updateSessionsTab(data) {
+            const tbody = document.getElementById('sessions-tbody');
+            tbody.innerHTML = '';
+
+            data.sessions.slice().reverse().forEach(session => {
+                const row = document.createElement('tr');
+                const duration = Math.floor(session.duration_seconds / 60);
+                
+                let trendBadge = 'neutral';
+                if (session.emotional_trend === 'angry') trendBadge = 'angry';
+                if (session.emotional_trend === 'happy') trendBadge = 'happy';
+
+                row.innerHTML = `
+                    <td>${session.date}</td>
+                    <td><strong>${session.game}</strong></td>
+                    <td>${duration}m</td>
+                    <td>
+                        <span style="color: #ff006e;">😠${session.angry_count}</span> |
+                        <span style="color: #00ff00;">😊${session.happy_count}</span> |
+                        <span style="color: #888;">😐${session.neutral_count}</span>
+                    </td>
+                    <td><span class="emotion-badge badge-${trendBadge}">${session.emotional_trend}</span></td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function updateAnalyticsTab(data) {
+            const stats = data.global_stats;
+            
+            document.getElementById('ragiest-game').textContent = stats.ragiest_game;
+            document.getElementById('happiest-game').textContent = stats.happiest_game;
+            document.getElementById('most-played').textContent = stats.most_played_game;
+
+            // Rage Comparison Chart
+            const ctx3 = document.getElementById('rageComparisonChart').getContext('2d');
+            const gameRages = {};
+            data.sessions.forEach(s => {
+                if (!gameRages[s.game]) gameRages[s.game] = [];
+                gameRages[s.game].push(s.angry_percentage);
+            });
+
+            const avgRages = Object.keys(gameRages).map(game => ({
+                game,
+                avg: gameRages[game].reduce((a, b) => a + b, 0) / gameRages[game].length
+            }));
+
+            new Chart(ctx3, {
+                type: 'bar',
+                data: {
+                    labels: avgRages.map(g => g.game),
+                    datasets: [{
+                        label: 'Average Rage %',
+                        data: avgRages.map(g => g.avg),
+                        backgroundColor: 'rgba(255, 0, 110, 0.7)',
+                        borderColor: '#ff006e',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    indexAxis: 'y',
+                    scales: {
+                        x: { 
+                            ticks: { color: '#888' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        },
+                        y: { 
+                            ticks: { color: '#fff', font: { size: 14 } },
+                            grid: { display: false }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+
+            // Trend Chart
+            const ctx4 = document.getElementById('trendChart').getContext('2d');
+            const sessions = data.sessions.slice(-15);
+            new Chart(ctx4, {
+                type: 'line',
+                data: {
+                    labels: sessions.map((s, i) => `Session ${i + 1}`),
+                    datasets: [
+                        {
+                            label: 'Rage %',
+                            data: sessions.map(s => s.angry_percentage),
+                            borderColor: '#ff006e',
+                            backgroundColor: 'rgba(255, 0, 110, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        },
+                        {
+                            label: 'Happy %',
+                            data: sessions.map(s => s.happy_percentage),
+                            borderColor: '#00ff00',
+                            backgroundColor: 'rgba(0, 255, 0, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: { 
+                            ticks: { color: '#888' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        },
+                        x: { 
+                            ticks: { color: '#888' },
+                            grid: { display: false }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: { color: '#fff', font: { size: 14, family: 'Rajdhani' } }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Load data on page load
+        window.addEventListener('DOMContentLoaded', loadData);
+    </script>
+</body>
+</html>
