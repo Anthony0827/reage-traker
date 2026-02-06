@@ -27,3 +27,5 @@ Thumbs.db
 # ===== Logs =====
 
 *.log
+
+_backup_old_files/
