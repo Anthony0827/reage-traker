@@ -4,17 +4,18 @@ __pycache__/
 *$py.class
 *.so
 .Python
+*.pyc
+
+# Entorno virtual
 venv/
 env/
 ENV/
+.venv
 
-# Datos locales
+# Datos locales y personales
 data/*.csv
-!data/.gitkeep
 config.json
-
-# Backups
-_backup_old_files/
+*.backup
 
 # IDEs
 .vscode/
@@ -26,6 +27,12 @@ _backup_old_files/
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Logs
+# Logs y temporales
 *.log
+_backup_old_files/
+*.tmp
+
+# Archivos de configuración local
+config_local.json
