@@ -106,7 +106,6 @@ class DataManager:
         with open(self.sessions_file, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                # ARREGLADO: Asegurar que row['game'] es string
                 row_game = str(row.get('game', ''))
                 if row_game.lower() == str(game_name).lower():
                     stats['total_sessions'] += 1
