@@ -14,6 +14,8 @@ Cambios principales respecto a la versión original:
    - Sparkline rodante de los últimos ~30s
    - Pills de calidad (luz, distancia, detección)
 6. Filosofía de detección sin cambios (sonrisa = feliz, no sonrisa = enfadado).
+7. Fase 3: soporte opcional de micrófono vía audio_monitor (duck-typing).
+   Añade VU meter en el HUD y fusiona métricas de gritos en el summary.
 """
 
 from __future__ import annotations
@@ -67,9 +69,14 @@ class EmotionDetector:
         game_name: str,
         test_mode: bool = False,
         profile: Optional[CalibrationProfile] = None,
+        audio_monitor: Optional[object] = None,
     ):
         self.game_name = game_name
         self.test_mode = test_mode
+        # Monitor de micrófono opcional (Fase 3). Duck-typing: solo asumo que
+        # expone .level (0..100), .threshold_pct, .is_screaming y .get_summary().
+        # Si es None, el comportamiento es idéntico al de la versión anterior.
+        self.audio_monitor = audio_monitor
 
         # Cargar perfil de calibración (con fallback a defaults)
         self.profile = profile or CalibrationProfile.load() or CalibrationProfile()
@@ -182,6 +189,11 @@ class EmotionDetector:
                     break
                 elif key == ord("r"):
                     self._reset_counters()
+                    if self.audio_monitor is not None:
+                        try:
+                            self.audio_monitor.reset()
+                        except Exception:
+                            pass
                 elif key == ord("p") and not self.test_mode:
                     self._toggle_pause()
                 elif key == ord("c"):
@@ -222,6 +234,16 @@ class EmotionDetector:
             "emotional_trend": trend,
             "total_frames": self.total_frames,
         }
+
+        # Fase 3: si hubo monitor de micrófono, añado las métricas de grito.
+        # Son campos opcionales; data_manager los persiste como columnas extra.
+        if self.audio_monitor is not None:
+            try:
+                summary.update(self.audio_monitor.get_summary())
+            except Exception:
+                pass
+
+        return summary
 
     # =========================================================================
     # Detección
@@ -433,3 +455,56 @@ class EmotionDetector:
 
         # 7. Tira de hotkeys
         hud.draw_hotkeys_strip(frame, HOTKEYS_TEST if self.test_mode else HOTKEYS_RUN)
+
+        # 8. Mini-indicador de micrófono (solo si hay monitor de gritos activo)
+        if self.audio_monitor is not None:
+            self._draw_mic_indicator(frame)
+
+    def _draw_mic_indicator(self, frame: np.ndarray) -> None:
+        """VU horizontal del micrófono en la esquina superior derecha.
+
+        Dibujo con primitivas de cv2 + hud (sin tocar hud.py): barra de volumen
+        con zonas verde/ámbar/rojo, marca del umbral y contador de gritos.
+        Parpadea en rojo mientras se está gritando.
+        """
+        am = self.audio_monitor
+        try:
+            level = float(getattr(am, "level", 0.0))
+            thr = float(getattr(am, "threshold_pct", 80.0))
+            screaming = bool(getattr(am, "is_screaming", False))
+            scream_count = int(am.get_summary().get("scream_count", 0))
+        except Exception:
+            return
+
+        h, w = frame.shape[:2]
+        pw, ph = 250, 60
+        x = w - pw - 14
+        y = 52  # justo bajo la barra superior
+
+        flash = screaming and (int(time.time() * 4) % 2 == 0)
+        border = hud.COLOR_ANGRY if flash else hud.COLOR_CYAN
+        hud.draw_panel(frame, x, y, pw, ph, alpha=0.72, border_color=border)
+
+        hud.draw_text(frame, "MIC / GRITOS", (x + 12, y + 18), 0.42,
+                      hud.COLOR_TEXT_DIM, 1)
+        hud.draw_text(frame, f"x{scream_count}", (x + pw - 52, y + 18), 0.5,
+                      hud.COLOR_ANGRY if scream_count else hud.COLOR_TEXT_DIM, 1, shadow=True)
+
+        # Barra de volumen con zonas de color
+        bx, by, bw, bh = x + 12, y + 30, pw - 24, 14
+        cv2.rectangle(frame, (bx, by), (bx + bw, by + bh), hud.COLOR_BG_DARK, -1)
+        fill = int(bw * max(0.0, min(100.0, level)) / 100.0)
+        if level >= 90:
+            fill_color = hud.COLOR_BAD
+        elif level >= 60:
+            fill_color = hud.COLOR_WARN
+        else:
+            fill_color = hud.COLOR_GOOD
+        if fill > 0:
+            cv2.rectangle(frame, (bx, by), (bx + fill, by + bh), fill_color, -1)
+        # Marca del umbral de grito
+        tx = bx + int(bw * max(0.0, min(100.0, thr)) / 100.0)
+        cv2.line(frame, (tx, by - 2), (tx, by + bh + 2), hud.COLOR_ANGRY, 2, cv2.LINE_AA)
+        cv2.rectangle(frame, (bx, by), (bx + bw, by + bh), hud.COLOR_TEXT_DIM, 1)
+        hud.draw_text(frame, f"{int(level):3d}%", (bx + bw - 40, by - 4), 0.4,
+                      hud.COLOR_TEXT, 1)
