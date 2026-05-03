@@ -171,34 +171,48 @@
         50%      { opacity: 0.4; transform: scale(0.85); }
     }
 
-    /* ---- Tabs ------------------------------------------------------------- */
-    .tabs {
+    /* ---- Tabs (barra de navegación prominente) ---------------------------- */
+    .tabnav {
         display: flex;
-        gap: 4px;
+        justify-content: center;
+        gap: 6px;
+        margin: 0 0 28px;
+        padding: 6px;
         background: var(--surface);
-        padding: 4px;
         border: 1px solid var(--border);
         border-radius: var(--rad-md);
+        position: sticky;
+        top: 10px;
+        z-index: 30;
     }
     .tab {
+        flex: 1 1 0;
+        max-width: 260px;
+        min-height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
         background: transparent;
         border: none;
+        border-bottom: 3px solid transparent;
         color: var(--text-3);
-        padding: 8px 16px;
+        padding: 0 22px;
         font-family: var(--font-mono);
-        font-size: 11px;
-        font-weight: 500;
+        font-size: 13px;
+        font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 1.5px;
+        letter-spacing: 2px;
         cursor: pointer;
         border-radius: var(--rad-sm);
         transition: all 0.18s ease;
     }
-    .tab:hover { color: var(--text); }
+    .tab:hover { color: var(--text); background: var(--surface-3); }
     .tab.active {
         background: var(--surface-3);
         color: var(--cyan);
-        box-shadow: inset 0 0 0 1px var(--border);
+        border-bottom: 3px solid var(--cyan);
+        box-shadow: 0 0 18px rgba(92,240,210,0.12);
     }
 
     /* ---- Section headers -------------------------------------------------- */
@@ -841,13 +855,17 @@
         <div class="topbar-meta">
             <span id="conn-status" class="live-dot">SYS_ONLINE</span>
             <span id="last-update">—</span>
-            <div class="tabs" role="tablist">
-                <button class="tab active" data-tab="dashboard">Dashboard</button>
-                <button class="tab" data-tab="games">Games</button>
-                <button class="tab" data-tab="log">Log</button>
-            </div>
         </div>
     </div>
+
+    <!-- =========================================================
+         NAV TABS (prominente, centrada)
+         ========================================================= -->
+    <nav class="tabnav" role="tablist">
+        <button class="tab active" data-tab="dashboard">📊 Dashboard</button>
+        <button class="tab" data-tab="games">🎮 Juegos</button>
+        <button class="tab" data-tab="log">📋 Registro</button>
+    </nav>
 
     <!-- =========================================================
          DASHBOARD TAB
@@ -893,6 +911,11 @@
                     <div class="value" id="vital-peaks">0</div>
                     <div class="sub" id="vital-peaks-sub">—</div>
                 </div>
+                <div class="vital" id="vital-scream-tile" style="display:none">
+                    <div class="label">// Scream Index</div>
+                    <div class="value"><span id="vital-screams">0</span><span class="unit">grit</span></div>
+                    <div class="sub" id="vital-screams-sub">—</div>
+                </div>
             </div>
         </div>
 
@@ -916,6 +939,20 @@
                 <span class="note">Ordenado descendente</span>
             </div>
             <div id="leaderboard"></div>
+        </div>
+
+        <!-- SCREAM LEADERBOARD (solo si hay datos de micrófono) -->
+        <div class="section-head" id="scream-lb-head" style="display:none">
+            <span class="num">🔊</span>
+            <h2>Scream Leaderboard</h2>
+            <div class="rule"></div>
+        </div>
+        <div class="panel" id="scream-lb-panel" style="display:none">
+            <div class="panel-title">
+                <h3>Top juegos por número de gritos</h3>
+                <span class="note">Total acumulado</span>
+            </div>
+            <div id="scream-leaderboard"></div>
         </div>
 
         <!-- CHARTS GRID -->
@@ -945,7 +982,11 @@
         <div class="panel">
             <div class="panel-title">
                 <h3>Mapa de calor · hora × día</h3>
-                <span class="note">Rage % medio por franja</span>
+                <div class="filter-row" id="heatmap-toggle" style="margin:0">
+                    <button class="chip active" data-metric="rage">Rage</button>
+                    <button class="chip" data-metric="scream" id="heat-chip-scream" style="display:none">Gritos</button>
+                    <button class="chip" data-metric="both" id="heat-chip-both" style="display:none">Ambos</button>
+                </div>
             </div>
             <div class="heatmap-wrap" id="heatmap-wrap"></div>
         </div>
@@ -1006,7 +1047,16 @@ const STATE = {
     raw: null,
     filteredSessions: null,
     logFilter: 'all',
+    heatMetric: 'rage',
 };
+
+// ¿Hay datos de micrófono en alguna sesión? Decide si se muestran las
+// secciones de gritos (compatibilidad con CSV antiguos sin esas columnas).
+function hasScreamData(d) {
+    return !!(d && d.sessions && d.sessions.some(
+        s => (s.scream_count || 0) > 0 || (s.scream_total_seconds || 0) > 0
+    ));
+}
 
 // Chart.js defaults coherentes con el tema (solo si Chart cargó correctamente)
 if (typeof Chart !== 'undefined') {
@@ -1084,9 +1134,29 @@ function render() {
     renderLeaderboard(d);
     renderTimelineChart(d);
     renderDistributionChart(d);
-    renderHeatmap(d);
+    renderHeatmap(d, STATE.heatMetric);
     renderGamesTab(d);
     renderLogTab(d);
+
+    // --- secciones de gritos (solo si existen datos de micrófono) ---
+    const scream = hasScreamData(d);
+    toggleScreamUI(scream);
+    if (scream) renderScreamLeaderboard(d);
+}
+
+function toggleScreamUI(show) {
+    const disp = show ? '' : 'none';
+    const ids = [
+        'vital-scream-tile', 'scream-lb-head', 'scream-lb-panel',
+        'heat-chip-scream', 'heat-chip-both',
+    ];
+    for (const id of ids) {
+        const el = document.getElementById(id);
+        if (el) el.style.display = disp;
+    }
+    if (!show && STATE.heatMetric !== 'rage') {
+        STATE.heatMetric = 'rage';  // reset si se pierden los datos de gritos
+    }
 }
 
 // =========================================================================
@@ -1133,6 +1203,16 @@ function renderHero(d) {
     $('#vital-time-sub').textContent = totalSec >= 3600 ? `// ${totalMin} minutos totales` : '// tiempo invertido en rage';
     $('#vital-games-sub').textContent = `// catalogados`;
     $('#vital-peaks-sub').textContent = `// momentos de rage intenso`;
+
+    // Scream Index (gritos totales) — el contenedor se muestra/oculta en render()
+    const totalScreams = sessions.reduce((s, x) => s + (x.scream_count || 0), 0);
+    const totalScreamSec = sessions.reduce((s, x) => s + (x.scream_total_seconds || 0), 0);
+    if ($('#vital-screams')) {
+        animateNumber($('#vital-screams'), totalScreams);
+        $('#vital-screams-sub').textContent = totalScreamSec > 0
+            ? `// ${fmtTimeShort(Math.round(totalScreamSec))} gritando`
+            : '// eventos de grito';
+    }
 }
 
 function animateHeroNumber(target) {
@@ -1322,6 +1402,19 @@ function renderInsights(d) {
         });
     }
 
+    // 7. Sesión más ruidosa (solo si hay datos de micrófono)
+    if (hasScreamData(d)) {
+        const loudest = [...sessions].sort((a, b) => (b.scream_count || 0) - (a.scream_count || 0))[0];
+        if (loudest && (loudest.scream_count || 0) > 0) {
+            const mins = Math.max(1, Math.round(loudest.duration_seconds / 60));
+            insights.push({
+                tag: 'Sesión más ruidosa',
+                html: `En tu peor sesión de <strong>${escapeHtml(loudest.game)}</strong> gritaste <span class="num">${loudest.scream_count}</span> ${loudest.scream_count === 1 ? 'vez' : 'veces'} en ${mins} minuto${mins === 1 ? '' : 's'}.`,
+                cls: 'is-warning',
+            });
+        }
+    }
+
     // Render
     const container = $('#insights-container');
     container.innerHTML = insights.map(i => `
@@ -1364,6 +1457,37 @@ function renderLeaderboard(d) {
     $('#leaderboard').innerHTML = html;
 }
 
+// Ranking de juegos por número de gritos (solo con datos de micrófono).
+function renderScreamLeaderboard(d) {
+    const byGame = {};
+    for (const s of d.sessions) {
+        if (!byGame[s.game]) byGame[s.game] = {sessions: 0, screams: 0, secs: 0};
+        const g = byGame[s.game];
+        g.sessions++;
+        g.screams += (s.scream_count || 0);
+        g.secs += (s.scream_total_seconds || 0);
+    }
+    const rows = Object.entries(byGame)
+        .map(([name, g]) => ({name, screams: g.screams, sessions: g.sessions, secs: g.secs}))
+        .filter(r => r.screams > 0)
+        .sort((a, b) => b.screams - a.screams);
+
+    const max = Math.max(...rows.map(r => r.screams), 1);
+    const html = rows.map((r, i) => {
+        const widthPct = (r.screams / max) * 100;
+        return `
+        <div class="lb-row">
+            <span class="lb-rank">${String(i+1).padStart(2,'0')}</span>
+            <span class="lb-name">${escapeHtml(r.name)}</span>
+            <span class="lb-meta">${r.sessions}s · ${fmtTimeShort(Math.round(r.secs))}</span>
+            <div class="lb-bar"><div class="fill" style="width:${widthPct}%;background:var(--cyan)"></div></div>
+            <span class="lb-pct">${r.screams}</span>
+        </div>`;
+    }).join('');
+    const el = $('#scream-leaderboard');
+    if (el) el.innerHTML = html || '<div class="insight">Sin gritos registrados todavía.</div>';
+}
+
 // =========================================================================
 // TIMELINE CHART (Chart.js)
 // =========================================================================
@@ -1381,40 +1505,59 @@ function renderTimelineChart(d) {
     const labels = sessions.map((s, i) => `#${i+1}`);
     const rage  = sessions.map(s => s.angry_percentage);
     const happy = sessions.map(s => s.happy_percentage);
+    const showScream = hasScreamData(d);
+    const screams = sessions.map(s => s.scream_count || 0);
+
+    const datasets = [
+        {
+            label: 'Rage %',
+            data: rage,
+            borderColor: '#ff5260',
+            backgroundColor: 'rgba(255,82,96,0.12)',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.35,
+            pointRadius: 0,
+            pointHoverRadius: 5,
+            pointBackgroundColor: '#ff5260',
+            yAxisID: 'y',
+        },
+        {
+            label: 'Happy %',
+            data: happy,
+            borderColor: '#7cd87a',
+            backgroundColor: 'rgba(124,216,122,0.10)',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.35,
+            pointRadius: 0,
+            pointHoverRadius: 5,
+            pointBackgroundColor: '#7cd87a',
+            yAxisID: 'y',
+        },
+    ];
+    if (showScream) {
+        datasets.push({
+            label: 'Gritos',
+            data: screams,
+            borderColor: '#5cf0d2',
+            backgroundColor: 'rgba(92,240,210,0.10)',
+            borderWidth: 2,
+            borderDash: [4, 3],
+            fill: false,
+            tension: 0.35,
+            pointRadius: 0,
+            pointHoverRadius: 5,
+            pointBackgroundColor: '#5cf0d2',
+            yAxisID: 'y2',
+        });
+    }
 
     if (timelineChart) timelineChart.destroy();
     const ctx = $('#chart-timeline').getContext('2d');
     timelineChart = new Chart(ctx, {
         type: 'line',
-        data: {
-            labels,
-            datasets: [
-                {
-                    label: 'Rage %',
-                    data: rage,
-                    borderColor: '#ff5260',
-                    backgroundColor: 'rgba(255,82,96,0.12)',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.35,
-                    pointRadius: 0,
-                    pointHoverRadius: 5,
-                    pointBackgroundColor: '#ff5260',
-                },
-                {
-                    label: 'Happy %',
-                    data: happy,
-                    borderColor: '#7cd87a',
-                    backgroundColor: 'rgba(124,216,122,0.10)',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.35,
-                    pointRadius: 0,
-                    pointHoverRadius: 5,
-                    pointBackgroundColor: '#7cd87a',
-                },
-            ],
-        },
+        data: { labels, datasets },
         options: {
             responsive: true,
             maintainAspectRatio: false,
@@ -1425,6 +1568,16 @@ function renderTimelineChart(d) {
                     grid: { color: 'rgba(255,255,255,0.04)' },
                     ticks: { callback: v => v + '%' },
                 },
+                ...(showScream ? {
+                    y2: {
+                        position: 'right',
+                        min: 0,
+                        suggestedMax: Math.max(5, ...screams),
+                        grid: { drawOnChartArea: false },
+                        ticks: { color: '#5cf0d2', precision: 0 },
+                        title: { display: true, text: 'gritos', color: '#5cf0d2', font: {size: 10} },
+                    },
+                } : {}),
                 x: {
                     grid: { display: false },
                     ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 12 },
@@ -1521,18 +1674,28 @@ function renderDistributionChart(d) {
 // =========================================================================
 // HEATMAP hora × día
 // =========================================================================
-function renderHeatmap(d) {
+function renderHeatmap(d, metric = 'rage') {
     const days = ['LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB', 'DOM'];
-    const grid = Array.from({length: 7}, () => Array.from({length: 24}, () => ({sum: 0, count: 0})));
+    // Cada celda acumula rage (suma %) y gritos (suma counts) + nº de sesiones.
+    const grid = Array.from({length: 7}, () => Array.from({length: 24}, () => ({rage: 0, scream: 0, count: 0})));
 
     for (const s of d.sessions) {
         const dt = new Date(s.date.replace(' ', 'T'));
         if (isNaN(dt)) continue;
         const dayIdx = (dt.getDay() + 6) % 7;  // lun = 0
         const hour = dt.getHours();
-        grid[dayIdx][hour].sum += s.angry_percentage;
+        grid[dayIdx][hour].rage += s.angry_percentage;
+        grid[dayIdx][hour].scream += (s.scream_count || 0);
         grid[dayIdx][hour].count++;
     }
+
+    // Para gritos necesitamos el máximo para normalizar el color.
+    let maxScream = 0;
+    for (const row of grid) for (const c of row) if (c.scream > maxScream) maxScream = c.scream;
+    maxScream = Math.max(maxScream, 1);
+
+    const isScream = metric === 'scream';
+    const isBoth = metric === 'both';
 
     // Cabecera de horas
     const hourLabels = `<div class="heat-hour-label">` +
@@ -1541,30 +1704,40 @@ function renderHeatmap(d) {
 
     const rowsHtml = grid.map((row, di) => {
         const cells = row.map((cell, hi) => {
-            const avg = cell.count ? cell.sum / cell.count : -1;
-            let bg;
-            if (avg < 0) {
+            let bg, title;
+            if (!cell.count) {
                 bg = 'var(--surface-3)';
+                title = `${days[di]} ${String(hi).padStart(2,'0')}h · sin datos`;
+            } else if (isScream) {
+                const t = Math.min(1, cell.scream / maxScream);
+                bg = cell.scream > 0 ? `rgba(92,240,210,${0.15 + t * 0.85})` : 'var(--surface-3)';
+                title = `${days[di]} ${String(hi).padStart(2,'0')}h · ${cell.scream} gritos · ${cell.count} sesión${cell.count === 1 ? '' : 'es'}`;
+            } else if (isBoth) {
+                // Mezcla: rojo (rage) + cian (gritos) superpuestos
+                const tr = Math.min(1, (cell.rage / cell.count) / 100);
+                const ts = Math.min(1, cell.scream / maxScream);
+                bg = `linear-gradient(135deg, rgba(255,82,96,${0.15 + tr * 0.85}) 0%, rgba(92,240,210,${0.15 + ts * 0.85}) 100%)`;
+                title = `${days[di]} ${String(hi).padStart(2,'0')}h · ${(cell.rage/cell.count).toFixed(0)}% rage · ${cell.scream} gritos`;
             } else {
-                // Mapeo 0..100 -> opacidad sobre el rojo
+                const avg = cell.rage / cell.count;
                 const t = Math.min(1, avg / 100);
                 bg = `rgba(255, 82, 96, ${0.15 + t * 0.85})`;
+                title = `${days[di]} ${String(hi).padStart(2,'0')}h · ${avg.toFixed(0)}% rage · ${cell.count} sesión${cell.count === 1 ? '' : 'es'}`;
             }
-            const title = cell.count
-                ? `${days[di]} ${String(hi).padStart(2,'0')}h · ${avg.toFixed(0)}% rage · ${cell.count} sesión${cell.count === 1 ? '' : 'es'}`
-                : `${days[di]} ${String(hi).padStart(2,'0')}h · sin datos`;
             return `<div class="heat-cell" style="background:${bg}" title="${title}"></div>`;
         }).join('');
         return `<div class="heat-day">${days[di]}</div>${cells}`;
     }).join('');
 
+    const scaleColor = isScream ? '92,240,210' : '255,82,96';
+    const legendLabel = isScream ? 'más gritos' : (isBoth ? 'rage + gritos' : '100% rage');
     const legend = `
         <div class="heat-legend">
-            <span>// 0%</span>
+            <span>// ${isScream ? '0' : '0%'}</span>
             <div class="scale">
-                ${[0.15, 0.30, 0.45, 0.60, 0.75, 0.90].map(t => `<div style="background:rgba(255,82,96,${t})"></div>`).join('')}
+                ${[0.15, 0.30, 0.45, 0.60, 0.75, 0.90].map(t => `<div style="background:rgba(${scaleColor},${t})"></div>`).join('')}
             </div>
-            <span>100% rage</span>
+            <span>${legendLabel}</span>
         </div>`;
 
     $('#heatmap-wrap').innerHTML = hourLabels + `<div class="heatmap">` + rowsHtml + `</div>` + legend;
@@ -1724,6 +1897,15 @@ $$('.tab').forEach(btn => {
         const tab = btn.dataset.tab;
         $$('.tab').forEach(t => t.classList.toggle('active', t === btn));
         $$('.tab-panel').forEach(p => p.classList.toggle('hidden', p.id !== `tab-${tab}`));
+    });
+});
+
+// Toggle del heatmap: Rage / Gritos / Ambos
+$$('#heatmap-toggle .chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+        STATE.heatMetric = chip.dataset.metric;
+        $$('#heatmap-toggle .chip').forEach(c => c.classList.toggle('active', c === chip));
+        if (STATE.raw) renderHeatmap(STATE.raw, STATE.heatMetric);
     });
 });
 
