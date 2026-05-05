@@ -63,6 +63,29 @@ def backend_name() -> str:
     return "none"
 
 
+def diagnose() -> str:
+    """Devuelve un diagnóstico legible del estado del subsistema de audio.
+
+    Pensado para que el launcher pueda mostrar un mensaje útil al usuario
+    en lugar de un silencio confuso cuando no hay micrófonos."""
+    if not audio_available():
+        return (
+            "No hay backend de audio instalado. Instalá 'sounddevice' con:\n"
+            "    pip install sounddevice==0.4.7\n"
+            "o 'PyAudio' como alternativa:\n"
+            "    pip install PyAudio"
+        )
+    devices = AudioMonitor.list_input_devices()
+    if not devices:
+        return (
+            f"Backend {backend_name()} activo, pero no se encontraron\n"
+            "dispositivos de entrada. Verificá que tu micrófono esté conectado\n"
+            "y que Windows tenga permisos de micrófono habilitados:\n"
+            "Configuración → Privacidad → Micrófono"
+        )
+    return f"Backend {backend_name()} · {len(devices)} dispositivo(s) de entrada"
+
+
 # -----------------------------------------------------------------------------
 # Utilidades de conversión RMS -> nivel 0..100 / dBFS
 # -----------------------------------------------------------------------------
@@ -149,8 +172,10 @@ class AudioMonitor:
                 for idx, dev in enumerate(_sd.query_devices()):
                     if dev.get("max_input_channels", 0) > 0:
                         devices.append((idx, dev.get("name", f"Dispositivo {idx}")))
-            except Exception:
-                pass
+            except Exception as exc:
+                # Si sounddevice está instalado pero PortAudio falla (drivers,
+                # permisos, DLLs faltantes), al menos aviso en lugar de silencio.
+                print(f"[!] Error al consultar dispositivos de audio (sounddevice): {exc}")
         elif _pyaudio is not None:
             try:
                 pa = _pyaudio.PyAudio()
@@ -161,8 +186,8 @@ class AudioMonitor:
                             devices.append((idx, str(info.get("name", f"Dispositivo {idx}"))))
                 finally:
                     pa.terminate()
-            except Exception:
-                pass
+            except Exception as exc:
+                print(f"[!] Error al consultar dispositivos de audio (PyAudio): {exc}")
         return devices
 
     @staticmethod

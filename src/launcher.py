@@ -47,7 +47,7 @@ GUI_AVAILABLE = (_CTK is not None) or (_TK is not None)
 
 from src.data_manager import DataManager
 try:
-    from src.audio_monitor import AudioMonitor, audio_available
+    from src.audio_monitor import AudioMonitor, audio_available, diagnose
 except Exception:  # pragma: no cover
     AudioMonitor = None  # type: ignore
 
@@ -437,6 +437,13 @@ class RageTrackerApp:
         self.mic_var = _str_var(labels[0])
         _mk_optionmenu(parent, self.mic_var, labels, command=self._on_mic_change).pack(
             fill="x", padx=16, pady=(0, 8))
+
+        # Si no hay dispositivos, muestro el diagnóstico para que el usuario
+        # sepa si es falta de backend o un problema de permisos/drivers.
+        if not devices:
+            diag = diagnose() if AudioMonitor else "Módulo de audio no disponible."
+            _mk_label(parent, diag, (MONO, 9), WARN, bg=SURFACE2).pack(
+                anchor="w", padx=16, pady=(0, 6))
 
         # Umbral
         self.thr_var = _double_var(80.0)
