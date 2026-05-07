@@ -48,11 +48,17 @@ GUI_AVAILABLE = (_CTK is not None) or (_TK is not None)
 from src.data_manager import DataManager
 try:
     from src.audio_monitor import AudioMonitor, audio_available, diagnose
-except Exception:  # pragma: no cover
+except Exception as _exc:  # pragma: no cover
     AudioMonitor = None  # type: ignore
 
     def audio_available() -> bool:  # type: ignore
         return False
+
+    def diagnose() -> str:
+        return (
+            f"No se pudo cargar el módulo de audio: {_exc}\n\n"
+            "Instalá sounddevice con: pip install sounddevice==0.4.7"
+        )
 
 
 # Rutas (raíz del proyecto, robusto frente al cwd / futuro .exe)
