@@ -462,7 +462,12 @@ class RageTrackerApp:
         _mk_label(parent, "Nivel en vivo (grita para calibrar):", (MONO, 10), TEXT3, bg=SURFACE2).pack(
             anchor="w", padx=16)
         self.vu_canvas = _mk_canvas(parent, 440, 26, bg=SURFACE)
-        self.vu_canvas.pack(fill="x", padx=16, pady=(4, 14))
+        self.vu_canvas.pack(fill="x", padx=16, pady=(4, 10))
+
+        # Botón de calibración dedicada (experiencia estilo juego de terror)
+        _mk_button(parent, "🎤  Calibrar micrófono", self._open_mic_calibration,
+                   fg=SURFACE3, hover=BORDER, text_color=CYAN,
+                   height=30, font=(MONO, 10)).pack(fill="x", padx=16, pady=(0, 12))
 
     def _toggle_mic_panel(self):
         want = bool(self.scream_var.get())
@@ -546,8 +551,216 @@ class RageTrackerApp:
             self._preview.threshold_pct = float(thr)
 
     # ------------------------------------------------------------------ #
-    # Arranque de la sesión (subproceso)
+    # Calibración de micrófono (ventana dedicada, estilo juego de terror)
     # ------------------------------------------------------------------ #
+    def _open_mic_calibration(self):
+        """Abre la ventana de calibración de micrófono.
+
+        Diseñé esto como una experiencia visual tipo juego de terror:
+        una barra de volumen grande que se mueve en vivo, con una línea
+        de umbral que el usuario arrastra según lo que ve. La idea es que
+        hable normal, grite, y ajuste la línea hasta que solo se active
+        cuando realmente grita — sin números fríos, puro feedback visual.
+        """
+        if not (AudioMonitor and audio_available()):
+            self._warn("No hay micrófono disponible.\n"
+                       "Instalá sounddevice: pip install sounddevice==0.4.7")
+            return
+
+        self._stop_preview()
+
+        # Ventana de calibración
+        parent = self._config_win or self.root
+        win = _CTK.CTkToplevel(parent) if _ctk() else _TK.Toplevel(parent)
+        win.title("Calibrar micrófono")
+        win.configure(bg=BG)
+        win.geometry("580x460")
+        win.resizable(False, False)
+        # La ventana de calibración es modal: bloquea la interacción con la
+        # ventana padre hasta que el usuario termine de calibrar o cierre.
+        win.transient(parent)
+        win.grab_set()
+
+        # ---- Estado ----
+        idx = self._current_mic_index() if hasattr(self, '_mic_map') else None
+        current_thr = self.thr_var.get() if hasattr(self, 'thr_var') else 80.0
+        try:
+            calib_monitor = AudioMonitor(device_index=idx, threshold_pct=float(current_thr))
+            if not calib_monitor.start():
+                self._warn("No se pudo abrir el micrófono para calibrar.")
+                win.destroy()
+                return
+        except Exception as e:
+            self._warn(f"Error al iniciar el micrófono: {e}")
+            win.destroy()
+            return
+
+        calib_thr = float(current_thr)  # mutable, capturada por el closure
+        calib_dragging = False
+
+        def on_close():
+            try:
+                calib_monitor.stop()
+            except Exception:
+                pass
+            try:
+                win.destroy()
+            except Exception:
+                pass
+
+        win.protocol("WM_DELETE_WINDOW", on_close)
+
+        # ---- UI ----
+        body = _mk_frame(win, fg=BG, corner=0)
+        body.pack(fill="both", expand=True, padx=22, pady=18)
+
+        _mk_label(body, "CALIBRACIÓN DE MICRÓFONO", (DISP, 22, "bold"), CYAN, bg=BG).pack(anchor="w")
+        _mk_label(body, "// hablá, gritá, ajustá el umbral hasta que solo "
+                  "se active cuando realmente grites",
+                  (MONO, 10), TEXT3, bg=BG).pack(anchor="w", pady=(0, 18))
+
+        # ---- Barra de volumen grande (canvas) ----
+        _mk_label(body, "NIVEL DE VOZ EN VIVO", (MONO, 10, "bold"), TEXT2, bg=BG).pack(anchor="w")
+        bar_h = 120
+        bar_canvas = _mk_canvas(body, 520, bar_h, bg=SURFACE)
+        bar_canvas.pack(fill="x", pady=(4, 6))
+
+        # ---- Indicador de estado ----
+        status_label = _mk_label(body, "●  Hablá normal para ver tu nivel base...",
+                                 (MONO, 12), TEXT2, bg=BG)
+        status_label.pack(anchor="w", pady=(0, 10))
+
+        # ---- Controles de umbral (mini-barra + etiqueta) ----
+        ctrl_frame = _mk_frame(body, fg=SURFACE, corner=10, border=1, border_color=BORDER)
+        ctrl_frame.pack(fill="x", pady=(0, 10))
+
+        thr_label = _mk_label(ctrl_frame, f"Umbral de grito: {int(calib_thr)}%",
+                              (MONO, 13, "bold"), CYAN, bg=SURFACE)
+        thr_label.pack(anchor="w", padx=16, pady=(12, 2))
+
+        hint_label = _mk_label(ctrl_frame,
+                               "← más sensible (susurro activa)       "
+                               "menos sensible (solo grito) →",
+                               (MONO, 9), TEXT3, bg=SURFACE)
+        hint_label.pack(anchor="w", padx=16, pady=(0, 0))
+
+        thr_var_local = _double_var(calib_thr)
+        thr_slider = _mk_slider(ctrl_frame, 0, 100, thr_var_local)
+        thr_slider.pack(fill="x", padx=16, pady=(4, 12))
+
+        def _on_thr_slider(val):
+            nonlocal calib_thr
+            calib_thr = float(val)
+            thr_label.configure(text=f"Umbral de grito: {int(calib_thr)}%")
+            calib_monitor.threshold_pct = calib_thr
+
+        # Conecto el slider. En CTk, el command recibe el valor como float.
+        # En tk estándar, el command de Scale recibe un string.
+        try:
+            if _ctk():
+                thr_slider.configure(command=_on_thr_slider)
+            else:
+                thr_slider.configure(command=lambda v: _on_thr_slider(float(v)))
+        except Exception:
+            pass
+
+        # ---- Botones ----
+        btn_frame = _mk_frame(body, fg=BG, corner=0)
+        btn_frame.pack(fill="x", pady=(8, 0))
+
+        def _on_save():
+            nonlocal calib_thr
+            self.thr_var.set(calib_thr)
+            self._on_thr_change()
+            on_close()
+
+        _mk_button(btn_frame, "💾  GUARDAR UMBRAL", _on_save,
+                   height=42, font=(MONO, 13, "bold")).pack(side="right", padx=(6, 0))
+        _mk_button(btn_frame, "🔄  Reiniciar contadores", calib_monitor.reset,
+                   fg=SURFACE2, hover=SURFACE3, text_color=TEXT2,
+                   height=34, font=(MONO, 11)).pack(side="left")
+
+        # ---- Loop de refresco del canvas ----
+        def _redraw():
+            if not win.winfo_exists():
+                return
+            try:
+                level = float(getattr(calib_monitor, "level", 0.0))
+                screaming = bool(getattr(calib_monitor, "is_screaming", False))
+                summary = calib_monitor.get_summary()
+                scream_count = int(summary.get("scream_count", 0))
+            except Exception:
+                win.after(60, _redraw)
+                return
+
+            c = bar_canvas
+            try:
+                c.delete("all")
+                w = int(c.winfo_width()) or 520
+                h = int(c.winfo_height()) or bar_h
+            except Exception:
+                win.after(60, _redraw)
+                return
+
+            # Fondo con zonas de color (verde → ámbar → rojo)
+            green_w = int(w * 0.50)
+            yellow_w = int(w * 0.30)
+            red_w = w - green_w - yellow_w
+            c.create_rectangle(0, 0, green_w, h, fill="#1a3a1a", outline="")
+            c.create_rectangle(green_w, 0, green_w + yellow_w, h, fill="#3a2a0a", outline="")
+            c.create_rectangle(green_w + yellow_w, 0, w, h, fill="#3a0a0a", outline="")
+
+            # Relleno del nivel actual
+            fill = int(w * max(0.0, min(100.0, level)) / 100.0)
+            if level >= 90:
+                fill_color = RAGE
+            elif level >= 60:
+                fill_color = WARN
+            else:
+                fill_color = HAPPY
+            if fill > 0:
+                c.create_rectangle(0, 0, fill, h, fill=fill_color, outline="", stipple="")
+
+            # Efecto de "barra que respira" con gradiente vertical
+            for i in range(0, fill, 4):
+                alpha = 0.15 + 0.05 * (i % 12) / 12
+                c.create_rectangle(i, 0, i + 3, h,
+                                   fill=fill_color, outline="", stipple="")
+
+            # Línea del umbral
+            tx = int(w * max(0.0, min(100.0, calib_thr)) / 100.0)
+            c.create_line(tx, 0, tx, h, fill=CYAN, width=3)
+            # Triángulo indicador arriba
+            c.create_polygon(tx - 8, 0, tx + 8, 0, tx, 12,
+                             fill=CYAN, outline=CYAN)
+
+            # Porcentaje actual
+            c.create_text(w - 44, 18, text=f"{int(level)}%",
+                          fill=TEXT, font=(MONO, 16, "bold"), anchor="ne")
+
+            # Etiqueta de umbral
+            c.create_text(tx, h - 14, text=f"umbral {int(calib_thr)}%",
+                          fill=CYAN, font=(MONO, 9), anchor="s")
+
+            # Estado (gritando / normal)
+            if screaming:
+                status_label.configure(
+                    text=f"⚡  ¡GRITANDO!  ({scream_count} gritos detectados)"
+                )
+                status_label.configure(text_color=RAGE)
+            elif level > 2:
+                status_label.configure(
+                    text=f"●  Nivel actual: {int(level)}%  —  "
+                         f"{'por encima' if level >= calib_thr else 'por debajo'} del umbral"
+                )
+                status_label.configure(text_color=TEXT2)
+            else:
+                status_label.configure(text="●  Silencio... hablá o gritá para calibrar")
+                status_label.configure(text_color=TEXT3)
+
+            win.after(60, _redraw)
+
+        _redraw()
     def _resolve_game(self):
         new = (self.new_game_var.get() or "").strip()
         if new:
