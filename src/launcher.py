@@ -373,7 +373,7 @@ class RageTrackerApp:
         win = _CTK.CTkToplevel(self.root) if _ctk() else _TK.Toplevel(self.root)
         win.title("Configurar sesión")
         win.configure(bg=BG)
-        win.geometry("520x600")
+        win.geometry("520x680")
         self._config_win = win
 
         def on_close():
