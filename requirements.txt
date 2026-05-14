@@ -1,19 +1,14 @@
 # RAGE TRACKER - dependencias
-# ---------------------------
-# Núcleo (ya existentes):
-numpy==2.4.1
-opencv-python==4.13.0.90
+opencv-python>=4.8
+numpy>=1.24
 
-# Fase 3 - GUI nativa:
-#   CustomTkinter da el look gaming oscuro. Si no estuviera instalado, el
-#   launcher cae automáticamente a tkinter (incluido con Python), así que la
-#   app siempre arranca.
-customtkinter==5.2.2
+# Micrófono (medidor de volumen / detección de gritos).
+# Sin esto, la detección de gritos queda desactivada (la app sigue funcionando
+# solo con emociones). En Linux instala también PortAudio: sudo apt install libportaudio2
+sounddevice>=0.4.6
 
-# Fase 3 - detección de micrófono / gritos:
-#   sounddevice usa PortAudio (en Linux: 'sudo apt install libportaudio2').
-sounddevice==0.4.7
+# Alternativa a sounddevice (descomenta solo si no usas sounddevice):
+# PyAudio>=0.2.13
 
-# Fallback opcional de audio si sounddevice no funciona en tu sistema.
-# Descomenta esta línea si lo necesitas:
-# PyAudio==0.2.14
+# GUI nativa (opcional: si falta, cae a tkinter estándar, incluido en Python).
+customtkinter>=5.2

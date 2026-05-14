@@ -1,18 +1,18 @@
 """
-RAGE TRACKER - Orquestador de sesión  [NUEVO]
-=============================================
+RAGE TRACKER - Orquestador de sesión
+====================================
 Lanza UNA sesión según los sensores elegidos y persiste el resultado.
-Aíslo aquí la lógica de combinación para no tocar camera.py más de lo necesario.
 
 Modos soportados:
 - "emotions"            -> EmotionDetector normal (cámara + HUD).
 - "emotions" + "scream" -> EmotionDetector con audio_monitor (mini-VU en el HUD).
+                           Cada grito confirmado SUMA al contador de enfado.
 - "scream" (solo)       -> sesión SIN cámara: ventana ligera con el medidor
                            de volumen, timer y contador de gritos.
 
 Es el punto al que llama `main.py --session ...` (subproceso lanzado por la GUI).
-Decidí lanzarlo como subproceso para evitar líos entre el event loop de Tk y el
-de OpenCV, sobre todo en macOS donde compiten por el hilo principal.
+Se lanza como subproceso para evitar líos entre el event loop de Tk y el de
+OpenCV (sobre todo en macOS, donde compiten por el hilo principal).
 """
 
 from __future__ import annotations
@@ -37,9 +37,18 @@ except Exception:  # pragma: no cover
         return False
 
 
+# Cuántos "momentos de enfado" suma cada grito confirmado. 1.0 = un grito
+# equivale a una detección de cara enfadada. Súbelo si quieres que los gritos
+# pesen más en el rage index.
+RAGE_PER_SCREAM = 1.0
+
+# Claves de micrófono que el monitor es la fuente de verdad y deben acabar
+# siempre en el resumen (y por tanto en el CSV / dashboard).
+_SCREAM_KEYS = (
+    "scream_count", "scream_peak_db", "scream_total_seconds", "mic_device_name",
+)
+
 # Esquema de emociones vacío para sesiones de solo-gritos (sin cámara).
-# Lo relleno con ceros para que el CSV tenga todas las columnas y el dashboard
-# no se confunda con campos ausentes.
 _EMPTY_EMOTIONS = {
     "happy_count": 0, "angry_count": 0, "neutral_count": 0,
     "happy_percentage": 0.0, "angry_percentage": 0.0, "neutral_percentage": 0.0,
@@ -47,11 +56,44 @@ _EMPTY_EMOTIONS = {
 }
 
 
+def _fold_screams_into_rage(summary: dict, weight: float = RAGE_PER_SCREAM) -> dict:
+    """Suma los gritos a la medición de enfado y recalcula porcentajes.
+
+    Cada grito confirmado (volumen por encima del umbral durante el tiempo
+    mínimo) cuenta como `weight` "momentos de enfado". Después recalcula los
+    porcentajes happy/angry/neutral sobre el nuevo total para que el rage index
+    del dashboard refleje también los gritos."""
+    screams = int(summary.get("scream_count", 0) or 0)
+    if screams <= 0 or weight <= 0:
+        return summary
+
+    add = int(round(screams * weight))
+    happy = int(summary.get("happy_count", 0) or 0)
+    angry = int(summary.get("angry_count", 0) or 0) + add
+    neutral = int(summary.get("neutral_count", 0) or 0)
+
+    summary["angry_count"] = angry
+    # Cada grito es también un "pico" de rage.
+    summary["peak_rage_count"] = int(summary.get("peak_rage_count", 0) or 0) + add
+
+    total = happy + angry + neutral
+    if total > 0:
+        summary["happy_percentage"] = round(happy / total * 100.0, 1)
+        summary["angry_percentage"] = round(angry / total * 100.0, 1)
+        summary["neutral_percentage"] = round(neutral / total * 100.0, 1)
+
+    # Si la sesión quedó dominada por gritos, el trend pasa a 'rage'.
+    if summary.get("angry_percentage", 0) >= 50:
+        summary["emotional_trend"] = "rage"
+    return summary
+
+
 def run_session(
     game: str,
     sensors: Iterable[str],
     mic_index: Optional[int] = None,
     threshold: float = 80.0,
+    sensitivity: float = 1.0,
     data_manager: Optional[DataManager] = None,
 ) -> Optional[dict]:
     """Ejecuta una sesión y la guarda. Devuelve el resumen o None si se aborta."""
@@ -70,30 +112,54 @@ def run_session(
         if AudioMonitor is None or not audio_available():
             print("[!] No hay backend de audio disponible (instala 'sounddevice').")
             if not want_emotions:
-                return None  # solo-gritos sin audio: no hay nada que hacer
+                return None
             print("    Continuo solo con detección de emociones.")
             want_scream = False
         else:
-            monitor = AudioMonitor(device_index=mic_index, threshold_pct=threshold)
+            monitor = AudioMonitor(
+                device_index=mic_index,
+                threshold_pct=threshold,
+                sensitivity=sensitivity,
+            )
             if not monitor.start():
-                print("[!] No se pudo abrir el micrófono. Continuo sin gritos.")
+                why = getattr(monitor, "last_error", "") or "motivo desconocido"
+                print(f"[!] No se pudo abrir el micrófono ({why}). Continuo sin gritos.")
                 monitor = None
                 if not want_emotions:
                     return None
 
     summary: Optional[dict] = None
+    monitor_summary: dict = {}
     try:
         if want_emotions:
-            detector = EmotionDetector(game_name=game, test_mode=False, audio_monitor=monitor)
+            detector = EmotionDetector(
+                game_name=game, test_mode=False, audio_monitor=monitor
+            )
             summary = detector.run()
         else:
             summary = _run_scream_only_session(game, monitor)
+
+        # Capturo las métricas del micro ANTES de pararlo (el monitor es la
+        # fuente de verdad para los campos de gritos).
+        if monitor is not None:
+            monitor_summary = monitor.get_summary()
     finally:
         if monitor is not None:
             monitor.stop()
 
     if summary is None:
         return None
+
+    # Asegura que las métricas de gritos están en el resumen, gane quien gane.
+    if monitor_summary:
+        for key in _SCREAM_KEYS:
+            if key in monitor_summary:
+                summary[key] = monitor_summary[key]
+
+    # Acopla los gritos al rage SOLO si había cámara: en solo-gritos no hay
+    # baseline de emociones y forzaríamos 100% de rage de forma artificial.
+    if want_emotions and want_scream:
+        summary = _fold_screams_into_rage(summary)
 
     dm.save_session(summary)
     print(
@@ -107,10 +173,9 @@ def run_session(
 def _run_scream_only_session(game: str, monitor) -> Optional[dict]:
     """Sesión sin cámara: solo micrófono. Ventana ligera con VU + timer.
 
-    Aquí creo una ventana de OpenCV desde cero (sin EmotionDetector) porque
-    no hay cámara que inicializar. El HUD es minimalista: barra de volumen
-    grande, contador de gritos, pico dBFS y segundos gritando.
-    """
+    Creo una ventana de OpenCV desde cero (sin EmotionDetector) porque no hay
+    cámara que inicializar. El HUD es minimalista: barra de volumen grande,
+    contador de gritos, pico dBFS y segundos gritando."""
     if monitor is None:
         return None
 
@@ -125,6 +190,7 @@ def _run_scream_only_session(game: str, monitor) -> Optional[dict]:
         elapsed = time.time() - start
         summary_live = monitor.get_summary()
         level = float(getattr(monitor, "level", 0.0))
+        peak = float(getattr(monitor, "peak_level", 0.0))
         thr = float(getattr(monitor, "threshold_pct", 80.0))
         screaming = bool(getattr(monitor, "is_screaming", False))
 
@@ -142,6 +208,10 @@ def _run_scream_only_session(game: str, monitor) -> Optional[dict]:
         color = hud.COLOR_BAD if level >= 90 else (hud.COLOR_WARN if level >= 60 else hud.COLOR_GOOD)
         if fill > 0:
             cv2.rectangle(frame, (bx, by), (bx + fill, by + bh), color, -1)
+        # Marcador de pico-hold
+        px = bx + int(bw * max(0.0, min(100.0, peak)) / 100.0)
+        cv2.line(frame, (px, by - 4), (px, by + bh + 4), hud.COLOR_TEXT, 2, cv2.LINE_AA)
+        # Línea de umbral
         tx = bx + int(bw * max(0.0, min(100.0, thr)) / 100.0)
         cv2.line(frame, (tx, by - 8), (tx, by + bh + 8), hud.COLOR_ANGRY, 2, cv2.LINE_AA)
         cv2.rectangle(frame, (bx, by), (bx + bw, by + bh), hud.COLOR_TEXT_DIM, 1)
