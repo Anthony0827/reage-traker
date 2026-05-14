@@ -503,25 +503,51 @@ class RageTrackerApp:
         if self._preview is None or self._config_win is None:
             return
         level = float(getattr(self._preview, "level", 0.0))
+        peak = float(getattr(self._preview, "peak_level", 0.0))
         thr = float(self.thr_var.get())
-        self._draw_vu(level, thr)
+        self._draw_vu(level, peak, thr)
         self._vu_after = self.root.after(50, self._poll_vu)
 
-    def _draw_vu(self, level, thr):
+    def _draw_vu(self, level, peak, thr):
         c = self.vu_canvas
         try:
             c.delete("all")
-            w = int(c.winfo_width()) or 440
-            h = int(c.winfo_height()) or 26
+            w = int(c.winfo_width())
+            h = int(c.winfo_height())
         except Exception:
             return
+        # Antes del primer layout, winfo_width() devuelve 1 (no 0), así que el
+        # 'or 440' no saltaba y la barra quedaba de 1px. Compruebo <= 1.
+        if w <= 1:
+            w = 440
+        if h <= 1:
+            h = 26
+
         c.create_rectangle(0, 0, w, h, fill=SURFACE, outline=BORDER)
         fill = int(w * max(0.0, min(100.0, level)) / 100.0)
         color = RAGE if level >= 90 else (WARN if level >= 60 else HAPPY)
         if fill > 0:
             c.create_rectangle(0, 0, fill, h, fill=color, outline="")
+
+        # Marcador de pico-hold (línea clara que cae despacio).
+        px = int(w * max(0.0, min(100.0, peak)) / 100.0)
+        c.create_line(px, 0, px, h, fill=TEXT, width=2)
+
+        # Línea de umbral.
         tx = int(w * max(0.0, min(100.0, thr)) / 100.0)
-        c.create_line(tx, 0, tx, h, fill=RAGE, width=2)
+        c.create_line(tx, 0, tx, h, fill=CYAN, width=2)
+
+        # Número de nivel + contador de gritos en vivo.
+        c.create_text(w - 6, h // 2, text=f"{int(level)}%",
+                      fill=TEXT, font=(MONO, 11, "bold"), anchor="e")
+        try:
+            scount = self._preview.get_summary().get("scream_count", 0) if self._preview else 0
+            screaming = bool(getattr(self._preview, "is_screaming", False))
+        except Exception:
+            scount, screaming = 0, False
+        tag = f"⚡{scount}" if screaming else f"{scount}"
+        c.create_text(6, h // 2, text=f"gritos {tag}",
+                      fill=(RAGE if screaming else TEXT3), font=(MONO, 9), anchor="w")
 
     def _stop_preview(self):
         if self._vu_after is not None:
@@ -696,11 +722,15 @@ class RageTrackerApp:
             c = bar_canvas
             try:
                 c.delete("all")
-                w = int(c.winfo_width()) or 520
-                h = int(c.winfo_height()) or bar_h
+                w = int(c.winfo_width())
+                h = int(c.winfo_height())
             except Exception:
                 win.after(60, _redraw)
                 return
+            if w <= 1:
+                w = 520
+            if h <= 1:
+                h = bar_h
 
             # Fondo con zonas de color (verde → ámbar → rojo)
             green_w = int(w * 0.50)
