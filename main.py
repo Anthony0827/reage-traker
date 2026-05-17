@@ -138,6 +138,7 @@ def run_session_cmd(args):
         sensors=args.sensors,
         mic_index=args.mic,
         threshold=args.threshold,
+        sensitivity=args.sensitivity,
         data_manager=DataManager(),
     )
     return 0 if summary is not None else 1
@@ -166,6 +167,9 @@ def build_parser():
                    help="Índice del micrófono (sounddevice). Por defecto: el del sistema.")
     p.add_argument("--threshold", type=float, default=80.0,
                    help="Umbral de grito en %% de volumen (0-100). Por defecto: 80.")
+    p.add_argument("--sensitivity", type=float, default=1.0,
+                   help="Ganancia del micrófono (1.0 = sin cambio). Súbela si la "
+                        "barra apenas se mueve con tu micro.")
     return p
 
 
