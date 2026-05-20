@@ -414,13 +414,20 @@ class RageTrackerApp:
         _mk_checkbox(sens, "😤  EMOCIONES   ·   detecta tu cara (cámara)",
                      self.emo_var).pack(anchor="w", padx=16, pady=(14, 6))
         _mk_checkbox(sens, "🔊  GRITOS      ·   detecta tu micrófono",
-                     self.scream_var, command=self._toggle_mic_panel).pack(anchor="w", padx=16, pady=(0, 6))
+                     self.scream_var, command=self._toggle_mic_button).pack(anchor="w", padx=16, pady=(0, 6))
         _mk_label(sens, "── puedes activar uno, otro, o ambos ──",
                   (MONO, 9), TEXT3, bg=SURFACE).pack(anchor="w", padx=16, pady=(0, 12))
 
-        # ---- Sub-panel de micrófono (visible solo si GRITOS) ----
-        self.mic_panel = _mk_frame(body, fg=SURFACE2, corner=12, border=1, border_color=BORDER)
-        self._build_mic_panel(self.mic_panel)
+        # ---- Botón de configuración de micrófono (visible solo si GRITOS) ----
+        self.thr_var = _double_var(80.0)
+        self.sens_var = _double_var(1.0)
+        self._mic_map: dict = {}
+        self.mic_var = _str_var("")
+
+        self.mic_btn_frame = _mk_frame(body, fg=BG, corner=0)
+        _mk_button(self.mic_btn_frame, "🎤  CONFIGURAR MICRÓFONO",
+                   self._open_mic_config, fg=SURFACE2, hover=SURFACE3, text_color=CYAN,
+                   height=42, font=(MONO, 13, "bold")).pack(fill="x")
 
         # ---- C) Botones ----
         actions = _mk_frame(body, fg=BG, corner=0)
@@ -431,123 +438,20 @@ class RageTrackerApp:
                    fg=SURFACE2, hover=SURFACE3, text_color=TEXT2,
                    height=34, font=(MONO, 11)).pack(fill="x", pady=(8, 0))
 
-        self._toggle_mic_panel()  # estado inicial coherente
+        self._toggle_mic_button()  # estado inicial coherente
 
-    def _build_mic_panel(self, parent):
-        _mk_label(parent, "MICRÓFONO", (MONO, 11, "bold"), CYAN, bg=SURFACE2).pack(
-            anchor="w", padx=16, pady=(12, 4))
-
-        devices = AudioMonitor.list_input_devices() if AudioMonitor else []
-        self._mic_map = {f"{i}: {name}": i for i, name in devices}
-        labels = list(self._mic_map.keys()) or ["Sin micrófonos detectados"]
-        self.mic_var = _str_var(labels[0])
-        _mk_optionmenu(parent, self.mic_var, labels, command=self._on_mic_change).pack(
-            fill="x", padx=16, pady=(0, 8))
-
-        # Si no hay dispositivos, muestro el diagnóstico para que el usuario
-        # sepa si es falta de backend o un problema de permisos/drivers.
-        if not devices:
-            diag = diagnose() if AudioMonitor else "Módulo de audio no disponible."
-            _mk_label(parent, diag, (MONO, 9), WARN, bg=SURFACE2).pack(
-                anchor="w", padx=16, pady=(0, 6))
-
-        # Umbral
-        self.thr_var = _double_var(80.0)
-        self.thr_label = _mk_label(parent, "Umbral de grito: 80%", (MONO, 11), TEXT2, bg=SURFACE2)
-        self.thr_label.pack(anchor="w", padx=16)
-        _mk_slider(parent, 0, 100, self.thr_var, command=self._on_thr_change).pack(
-            fill="x", padx=16, pady=(2, 10))
-
-        # VU meter (canvas)
-        _mk_label(parent, "Nivel en vivo (grita para calibrar):", (MONO, 10), TEXT3, bg=SURFACE2).pack(
-            anchor="w", padx=16)
-        self.vu_canvas = _mk_canvas(parent, 440, 26, bg=SURFACE)
-        self.vu_canvas.pack(fill="x", padx=16, pady=(4, 10))
-
-        # Botón de calibración dedicada (experiencia estilo juego de terror)
-        _mk_button(parent, "🎤  Calibrar micrófono", self._open_mic_calibration,
-                   fg=SURFACE3, hover=BORDER, text_color=CYAN,
-                   height=30, font=(MONO, 10)).pack(fill="x", padx=16, pady=(0, 12))
-
-    def _toggle_mic_panel(self):
+    def _toggle_mic_button(self):
         want = bool(self.scream_var.get())
         if want:
-            self.mic_panel.pack(fill="x", pady=(0, 12), after=None)
-            self._start_preview()
+            self.mic_btn_frame.pack(fill="x", pady=(0, 12), after=None)
         else:
-            self._stop_preview()
             try:
-                self.mic_panel.pack_forget()
+                self.mic_btn_frame.pack_forget()
             except Exception:
                 pass
 
-    # ---- Previsualización del micrófono ----
     def _current_mic_index(self):
         return self._mic_map.get(self.mic_var.get())
-
-    def _start_preview(self):
-        self._stop_preview()
-        if not (AudioMonitor and audio_available()):
-            return
-        idx = self._current_mic_index()
-        try:
-            self._preview = AudioMonitor(device_index=idx, threshold_pct=float(self.thr_var.get()))
-            if self._preview.start():
-                self._poll_vu()
-            else:
-                self._preview = None
-        except Exception:
-            self._preview = None
-
-    def _poll_vu(self):
-        if self._preview is None or self._config_win is None:
-            return
-        level = float(getattr(self._preview, "level", 0.0))
-        peak = float(getattr(self._preview, "peak_level", 0.0))
-        thr = float(self.thr_var.get())
-        self._draw_vu(level, peak, thr)
-        self._vu_after = self.root.after(50, self._poll_vu)
-
-    def _draw_vu(self, level, peak, thr):
-        c = self.vu_canvas
-        try:
-            c.delete("all")
-            w = int(c.winfo_width())
-            h = int(c.winfo_height())
-        except Exception:
-            return
-        # Antes del primer layout, winfo_width() devuelve 1 (no 0), así que el
-        # 'or 440' no saltaba y la barra quedaba de 1px. Compruebo <= 1.
-        if w <= 1:
-            w = 440
-        if h <= 1:
-            h = 26
-
-        c.create_rectangle(0, 0, w, h, fill=SURFACE, outline=BORDER)
-        fill = int(w * max(0.0, min(100.0, level)) / 100.0)
-        color = RAGE if level >= 90 else (WARN if level >= 60 else HAPPY)
-        if fill > 0:
-            c.create_rectangle(0, 0, fill, h, fill=color, outline="")
-
-        # Marcador de pico-hold (línea clara que cae despacio).
-        px = int(w * max(0.0, min(100.0, peak)) / 100.0)
-        c.create_line(px, 0, px, h, fill=TEXT, width=2)
-
-        # Línea de umbral.
-        tx = int(w * max(0.0, min(100.0, thr)) / 100.0)
-        c.create_line(tx, 0, tx, h, fill=CYAN, width=2)
-
-        # Número de nivel + contador de gritos en vivo.
-        c.create_text(w - 6, h // 2, text=f"{int(level)}%",
-                      fill=TEXT, font=(MONO, 11, "bold"), anchor="e")
-        try:
-            scount = self._preview.get_summary().get("scream_count", 0) if self._preview else 0
-            screaming = bool(getattr(self._preview, "is_screaming", False))
-        except Exception:
-            scount, screaming = 0, False
-        tag = f"⚡{scount}" if screaming else f"{scount}"
-        c.create_text(6, h // 2, text=f"gritos {tag}",
-                      fill=(RAGE if screaming else TEXT3), font=(MONO, 9), anchor="w")
 
     def _stop_preview(self):
         if self._vu_after is not None:
@@ -563,18 +467,293 @@ class RageTrackerApp:
                 pass
             self._preview = None
 
-    def _on_mic_change(self, _value=None):
-        if self.scream_var.get():
-            self._start_preview()
+    # ------------------------------------------------------------------ #
+    # Ventana de configuración de micrófono (VU en vivo + ajustes)
+    # ------------------------------------------------------------------ #
+    def _open_mic_config(self):
+        """Ventana dedicada: selector de micro, barra VU grande, umbral y sensibilidad.
 
-    def _on_thr_change(self, _value=None):
-        thr = int(float(self.thr_var.get()))
+        A diferencia del panel embebido que había antes, esta ventana es amplia,
+        tiene bordes bien definidos, y la barra de volumen es de 100 px de alto
+        para que se vea clara aunque estés a un metro de la pantalla."""
+        self._stop_preview()
+
+        parent = self._config_win or self.root
+        win = _CTK.CTkToplevel(parent) if _ctk() else _TK.Toplevel(parent)
+        win.title("Configurar micrófono")
+        win.configure(bg=BG)
+        win.geometry("560x640")
+        win.resizable(False, False)
+        win.transient(parent)
+        win.grab_set()
+
+        # Poblar el mapa de dispositivos (perezoso, se actualiza cada vez que
+        # se abre la ventana por si el usuario conectó un micro nuevo).
+        devices = AudioMonitor.list_input_devices() if AudioMonitor else []
+        self._mic_map = {f"{i}: {name}": i for i, name in devices}
+        labels = list(self._mic_map.keys()) or ["Sin micrófonos detectados"]
+        if not self.mic_var.get() or self.mic_var.get() not in labels:
+            self.mic_var.set(labels[0])
+
+        # Monitor local para la previsualización en vivo.
+        mic_monitor = None
+        vu_after = None
+
+        def _start():
+            nonlocal mic_monitor
+            if not (AudioMonitor and audio_available()):
+                status_label.configure(text="⚠  Sin backend de audio. Instalá sounddevice.")
+                status_label.configure(text_color=WARN)
+                return
+            idx = self._mic_map.get(mic_var_local.get())
+            try:
+                mic_monitor = AudioMonitor(
+                    device_index=idx,
+                    threshold_pct=float(thr_var_local.get()),
+                    sensitivity=float(sens_var_local.get()),
+                )
+                if not mic_monitor.start():
+                    why = getattr(mic_monitor, "last_error", "") or "motivo desconocido"
+                    status_label.configure(text=f"⚠  No se pudo abrir: {why}")
+                    status_label.configure(text_color=WARN)
+                    mic_monitor = None
+            except Exception as e:
+                status_label.configure(text=f"⚠  Error: {e}")
+                status_label.configure(text_color=WARN)
+                mic_monitor = None
+
+        def _stop():
+            nonlocal mic_monitor, vu_after
+            if vu_after is not None:
+                try:
+                    win.after_cancel(vu_after)
+                except Exception:
+                    pass
+                vu_after = None
+            if mic_monitor is not None:
+                try:
+                    mic_monitor.stop()
+                except Exception:
+                    pass
+                mic_monitor = None
+
+        def on_close():
+            _stop()
+            try:
+                win.destroy()
+            except Exception:
+                pass
+
+        win.protocol("WM_DELETE_WINDOW", on_close)
+
+        # ---- UI ----
+        body = _mk_frame(win, fg=BG, corner=0)
+        body.pack(fill="both", expand=True, padx=22, pady=18)
+
+        _mk_label(body, "CONFIGURAR MICRÓFONO", (DISP, 22, "bold"), CYAN, bg=BG).pack(anchor="w")
+        _mk_label(body, "// seleccioná el micro, ajustá umbral y sensibilidad",
+                  (MONO, 10), TEXT3, bg=BG).pack(anchor="w", pady=(0, 16))
+
+        # ---- Dispositivo ----
+        dev_frame = _mk_frame(body, fg=SURFACE, corner=10, border=1, border_color=BORDER)
+        dev_frame.pack(fill="x", pady=(0, 12))
+        _mk_label(dev_frame, "DISPOSITIVO", (MONO, 10, "bold"), TEXT2, bg=SURFACE).pack(
+            anchor="w", padx=16, pady=(12, 4))
+        mic_var_local = _str_var(self.mic_var.get())
+        _mk_optionmenu(dev_frame, mic_var_local, labels, command=lambda v: _restart()).pack(
+            fill="x", padx=16, pady=(0, 4))
+
+        if not devices:
+            diag = diagnose() if AudioMonitor else "Módulo de audio no disponible."
+            _mk_label(dev_frame, diag, (MONO, 9), WARN, bg=SURFACE).pack(
+                anchor="w", padx=16, pady=(0, 10))
+
+        # Indicador de estado del micro
+        status_label = _mk_label(dev_frame, "●  Micrófono listo", (MONO, 11), TEXT2, bg=SURFACE)
+        status_label.pack(anchor="w", padx=16, pady=(0, 12))
+
+        # ---- VU meter (grande) ----
+        vu_frame = _mk_frame(body, fg=SURFACE, corner=10, border=2, border_color=CYAN_DIM)
+        vu_frame.pack(fill="x", pady=(0, 12))
+        _mk_label(vu_frame, "NIVEL EN VIVO", (MONO, 10, "bold"), TEXT2, bg=SURFACE).pack(
+            anchor="w", padx=16, pady=(12, 4))
+        BAR_H = 100
+        bar_canvas = _mk_canvas(vu_frame, 480, BAR_H, bg=SURFACE2)
+        bar_canvas.pack(fill="x", padx=16, pady=(4, 12))
+
+        # ---- Umbral ----
+        thr_frame = _mk_frame(body, fg=SURFACE, corner=10, border=1, border_color=BORDER)
+        thr_frame.pack(fill="x", pady=(0, 12))
+        thr_label = _mk_label(thr_frame, "UMBRAL DE GRITO", (MONO, 10, "bold"), TEXT2, bg=SURFACE)
+        thr_label.pack(anchor="w", padx=16, pady=(12, 4))
+        thr_var_local = _double_var(self.thr_var.get())
+        thr_slider = _mk_slider(thr_frame, 0, 100, thr_var_local)
+        thr_slider.pack(fill="x", padx=16, pady=(4, 4))
+        thr_val_label = _mk_label(thr_frame, f"{int(thr_var_local.get())}% — "
+                                  "cuanto más alto, más fuerte hay que gritar",
+                                  (MONO, 10), CYAN, bg=SURFACE)
+        thr_val_label.pack(anchor="w", padx=16, pady=(0, 12))
+
+        # ---- Sensibilidad ----
+        sens_frame = _mk_frame(body, fg=SURFACE, corner=10, border=1, border_color=BORDER)
+        sens_frame.pack(fill="x", pady=(0, 12))
+        sens_label = _mk_label(sens_frame, "SENSIBILIDAD (ganancia)", (MONO, 10, "bold"), TEXT2, bg=SURFACE)
+        sens_label.pack(anchor="w", padx=16, pady=(12, 4))
+        sens_var_local = _double_var(self.sens_var.get())
+        sens_slider = _mk_slider(sens_frame, 0.5, 5.0, sens_var_local)
+        sens_slider.pack(fill="x", padx=16, pady=(4, 4))
+        sens_val_label = _mk_label(sens_frame, f"{sens_var_local.get():.1f}x — "
+                                   "subilo si tu micro es flojo y la barra no se mueve",
+                                   (MONO, 10), CYAN, bg=SURFACE)
+        sens_val_label.pack(anchor="w", padx=16, pady=(0, 12))
+
+        # ---- Botones ----
+        btn_frame = _mk_frame(body, fg=BG, corner=0)
+        btn_frame.pack(fill="x", pady=(8, 0))
+        _mk_button(btn_frame, "💾  GUARDAR Y CERRAR",
+                   lambda: (_save(), on_close()),
+                   height=42, font=(MONO, 13, "bold")).pack(side="right", padx=(6, 0))
+        _mk_button(btn_frame, "🎤  Calibrar con grito real",
+                   self._open_mic_calibration,
+                   fg=SURFACE2, hover=SURFACE3, text_color=CYAN,
+                   height=34, font=(MONO, 10)).pack(side="left")
+
+        # ---- Callbacks de sliders ----
+        def _on_thr(val):
+            v = float(val)
+            thr_val_label.configure(
+                text=f"{int(v)}% — cuanto más alto, más fuerte hay que gritar")
+            if mic_monitor is not None:
+                mic_monitor.threshold_pct = v
+
+        def _on_sens(val):
+            v = float(val)
+            sens_val_label.configure(
+                text=f"{v:.1f}x — subilo si tu micro es flojo y la barra no se mueve")
+            if mic_monitor is not None:
+                mic_monitor.sensitivity = v
+
         try:
-            self.thr_label.configure(text=f"Umbral de grito: {thr}%")
+            if _ctk():
+                thr_slider.configure(command=_on_thr)
+                sens_slider.configure(command=_on_sens)
+            else:
+                thr_slider.configure(command=lambda v: _on_thr(float(v)))
+                sens_slider.configure(command=lambda v: _on_sens(float(v)))
         except Exception:
             pass
-        if self._preview is not None:
-            self._preview.threshold_pct = float(thr)
+
+        def _save():
+            self.mic_var.set(mic_var_local.get())
+            self.thr_var.set(thr_var_local.get())
+            self.sens_var.set(sens_var_local.get())
+
+        def _restart():
+            _stop()
+            self.mic_var.set(mic_var_local.get())
+            # Reconstruyo el mapa por si cambió el dispositivo
+            nonlocal labels
+            devices = AudioMonitor.list_input_devices() if AudioMonitor else []
+            self._mic_map = {f"{i}: {name}": i for i, name in devices}
+            labels = list(self._mic_map.keys()) or ["Sin micrófonos detectados"]
+            mic_var_local.set(labels[0] if labels else "")
+            _start()
+            _poll()
+
+        # ---- Loop de refresco de la barra VU ----
+        def _poll():
+            nonlocal vu_after
+            if not win.winfo_exists():
+                return
+            if mic_monitor is None:
+                vu_after = win.after(60, _poll)
+                return
+            try:
+                level = float(getattr(mic_monitor, "level", 0.0))
+                peak = float(getattr(mic_monitor, "peak_level", 0.0))
+                thr = float(thr_var_local.get())
+                screaming = bool(getattr(mic_monitor, "is_screaming", False))
+                summary = mic_monitor.get_summary()
+                scount = int(summary.get("scream_count", 0))
+            except Exception:
+                vu_after = win.after(60, _poll)
+                return
+
+            c = bar_canvas
+            try:
+                c.delete("all")
+                w = int(c.winfo_width())
+                h = int(c.winfo_height())
+            except Exception:
+                vu_after = win.after(60, _poll)
+                return
+            if w <= 1:
+                w = 480
+            if h <= 1:
+                h = BAR_H
+
+            # Zonas de color de fondo (verde → ámbar → rojo)
+            green_w = int(w * 0.50)
+            yellow_w = int(w * 0.30)
+            red_w = w - green_w - yellow_w
+            c.create_rectangle(0, 0, green_w, h, fill="#1a3a1a", outline="")
+            c.create_rectangle(green_w, 0, green_w + yellow_w, h, fill="#3a2a0a", outline="")
+            c.create_rectangle(green_w + yellow_w, 0, w, h, fill="#3a0a0a", outline="")
+
+            # Relleno del nivel
+            fill_w = int(w * max(0.0, min(100.0, level)) / 100.0)
+            if level >= 90:
+                fill_color = RAGE
+            elif level >= 60:
+                fill_color = WARN
+            else:
+                fill_color = HAPPY
+            if fill_w > 0:
+                c.create_rectangle(0, 0, fill_w, h, fill=fill_color, outline="")
+
+            # Marcador de pico (línea blanca que cae despacio)
+            px = int(w * max(0.0, min(100.0, peak)) / 100.0)
+            c.create_line(px, 0, px, h, fill=TEXT, width=2)
+
+            # Línea del umbral (cyan con triángulo)
+            tx = int(w * max(0.0, min(100.0, thr)) / 100.0)
+            c.create_line(tx, 0, tx, h, fill=CYAN, width=2)
+            c.create_polygon(tx - 8, 0, tx + 8, 0, tx, 12, fill=CYAN, outline=CYAN)
+
+            # Textos
+            c.create_text(w - 44, 18, text=f"{int(level)}%",
+                          fill=TEXT, font=(MONO, 16, "bold"), anchor="ne")
+            c.create_text(tx, h - 14, text=f"umbral {int(thr)}%",
+                          fill=CYAN, font=(MONO, 9), anchor="s")
+
+            # Contador de gritos
+            if screaming:
+                tag = f"⚡ {scount} gritos"
+                tag_color = RAGE
+            else:
+                tag = f"{scount} gritos"
+                tag_color = TEXT3
+            c.create_text(44, 18, text=tag, fill=tag_color, font=(MONO, 10), anchor="nw")
+
+            # Borde exterior
+            c.create_rectangle(0, 0, w - 1, h - 1, outline=BORDER)
+
+            # Estado
+            if screaming:
+                status_label.configure(text=f"⚡  ¡GRITANDO!  ({scount} gritos)")
+                status_label.configure(text_color=RAGE)
+            elif level > 2:
+                status_label.configure(text=f"●  Nivel: {int(level)}%  —  "
+                                         f"{'por encima' if level >= thr else 'por debajo'} del umbral")
+                status_label.configure(text_color=TEXT2)
+            else:
+                status_label.configure(text="●  Silencio... hablá para ver la barra")
+                status_label.configure(text_color=TEXT3)
+
+            vu_after = win.after(50, _poll)
+
+        _start()
+        _poll()
 
     # ------------------------------------------------------------------ #
     # Calibración de micrófono (ventana dedicada, estilo juego de terror)
@@ -815,13 +994,15 @@ class RageTrackerApp:
 
         mic_index = self._current_mic_index() if "scream" in sensors else None
         threshold = int(float(self.thr_var.get()))
+        sensitivity = float(self.sens_var.get())
 
         # Libero el micrófono de previsualización antes de lanzar la sesión real
         # para que no haya conflicto de dispositivos.
         self._stop_preview()
 
         cmd = [sys.executable, str(MAIN_PY), "--session", "--game", game,
-               "--sensors", *sensors, "--threshold", str(threshold)]
+               "--sensors", *sensors, "--threshold", str(threshold),
+               "--sensitivity", str(sensitivity)]
         if mic_index is not None:
             cmd += ["--mic", str(mic_index)]
 
