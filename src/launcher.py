@@ -614,7 +614,7 @@ class RageTrackerApp:
                    lambda: (_save(), on_close()),
                    height=42, font=(MONO, 13, "bold")).pack(side="right", padx=(6, 0))
         _mk_button(btn_frame, "🎤  Calibrar con grito real",
-                   self._open_mic_calibration,
+                   lambda: (_save(), _stop(), on_close(), self._open_mic_calibration()),
                    fg=SURFACE2, hover=SURFACE3, text_color=CYAN,
                    height=34, font=(MONO, 10)).pack(side="left")
 
