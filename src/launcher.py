@@ -579,7 +579,36 @@ class RageTrackerApp:
             anchor="w", padx=16, pady=(12, 4))
         BAR_H = 100
         bar_canvas = _mk_canvas(vu_frame, 480, BAR_H, bg=SURFACE2)
-        bar_canvas.pack(fill="x", padx=16, pady=(4, 12))
+        bar_canvas.pack(fill="x", padx=16, pady=(4, 4))
+
+        # ---- Drag del umbral directamente sobre la barra VU ----
+        _thr_dragging = [False]  # mutable para el closure
+
+        def _on_thr_click(e):
+            w = int(bar_canvas.winfo_width()) or 480
+            tx = int(w * float(thr_var_local.get()) / 100.0)
+            if abs(e.x - tx) < 18:  # zona de agarre de ±18px alrededor de la línea
+                _thr_dragging[0] = True
+
+        def _on_thr_drag(e):
+            if not _thr_dragging[0]:
+                return
+            w = int(bar_canvas.winfo_width()) or 480
+            if w <= 1:
+                w = 480
+            pct = max(0.0, min(100.0, e.x / w * 100.0))
+            thr_var_local.set(pct)
+            _on_thr(pct)
+
+        def _on_thr_release(e):
+            _thr_dragging[0] = False
+
+        bar_canvas.bind("<Button-1>", _on_thr_click, add="+")
+        bar_canvas.bind("<B1-Motion>", _on_thr_drag, add="+")
+        bar_canvas.bind("<ButtonRelease-1>", _on_thr_release, add="+")
+
+        _mk_label(vu_frame, "↕  arrastrá la línea cyan para ajustar el umbral",
+                  (MONO, 9), TEXT3, bg=SURFACE).pack(anchor="w", padx=16, pady=(0, 10))
 
         # ---- Umbral ----
         thr_frame = _mk_frame(body, fg=SURFACE, corner=10, border=1, border_color=BORDER)
@@ -717,10 +746,10 @@ class RageTrackerApp:
             px = int(w * max(0.0, min(100.0, peak)) / 100.0)
             c.create_line(px, 0, px, h, fill=TEXT, width=2)
 
-            # Línea del umbral (cyan con triángulo)
+            # Línea del umbral (arrastrable — click y mové)
             tx = int(w * max(0.0, min(100.0, thr)) / 100.0)
-            c.create_line(tx, 0, tx, h, fill=CYAN, width=2)
-            c.create_polygon(tx - 8, 0, tx + 8, 0, tx, 12, fill=CYAN, outline=CYAN)
+            c.create_line(tx, 0, tx, h, fill=CYAN, width=3)
+            c.create_polygon(tx - 10, 0, tx + 10, 0, tx, 14, fill=CYAN, outline=CYAN)
 
             # Textos
             c.create_text(w - 44, 18, text=f"{int(level)}%",
