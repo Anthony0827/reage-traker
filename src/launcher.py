@@ -503,7 +503,7 @@ class RageTrackerApp:
             nonlocal mic_monitor
             if not (AudioMonitor and audio_available()):
                 status_label.configure(text="⚠  Sin backend de audio. Instalá sounddevice.")
-                status_label.configure(text_color=WARN)
+                _set_label_fg(status_label, WARN)
                 return
             idx = self._mic_map.get(mic_var_local.get())
             try:
@@ -515,11 +515,11 @@ class RageTrackerApp:
                 if not mic_monitor.start():
                     why = getattr(mic_monitor, "last_error", "") or "motivo desconocido"
                     status_label.configure(text=f"⚠  No se pudo abrir: {why}")
-                    status_label.configure(text_color=WARN)
+                    _set_label_fg(status_label, WARN)
                     mic_monitor = None
             except Exception as e:
                 status_label.configure(text=f"⚠  Error: {e}")
-                status_label.configure(text_color=WARN)
+                _set_label_fg(status_label, WARN)
                 mic_monitor = None
 
         def _stop():
@@ -656,7 +656,9 @@ class RageTrackerApp:
             devices = AudioMonitor.list_input_devices() if AudioMonitor else []
             self._mic_map = {f"{i}: {name}": i for i, name in devices}
             labels = list(self._mic_map.keys()) or ["Sin micrófonos detectados"]
-            mic_var_local.set(labels[0] if labels else "")
+            # Solo reseteo si el dispositivo actual ya no está en la lista (ej: se desconectó)
+            if mic_var_local.get() not in labels:
+                mic_var_local.set(labels[0] if labels else "")
             _start()
             _poll()
 
@@ -741,14 +743,14 @@ class RageTrackerApp:
             # Estado
             if screaming:
                 status_label.configure(text=f"⚡  ¡GRITANDO!  ({scount} gritos)")
-                status_label.configure(text_color=RAGE)
+                _set_label_fg(status_label, RAGE)
             elif level > 2:
                 status_label.configure(text=f"●  Nivel: {int(level)}%  —  "
                                          f"{'por encima' if level >= thr else 'por debajo'} del umbral")
-                status_label.configure(text_color=TEXT2)
+                _set_label_fg(status_label, TEXT2)
             else:
                 status_label.configure(text="●  Silencio... hablá para ver la barra")
-                status_label.configure(text_color=TEXT3)
+                _set_label_fg(status_label, TEXT3)
 
             vu_after = win.after(50, _poll)
 
@@ -956,16 +958,16 @@ class RageTrackerApp:
                 status_label.configure(
                     text=f"⚡  ¡GRITANDO!  ({scream_count} gritos detectados)"
                 )
-                status_label.configure(text_color=RAGE)
+                _set_label_fg(status_label, RAGE)
             elif level > 2:
                 status_label.configure(
                     text=f"●  Nivel actual: {int(level)}%  —  "
                          f"{'por encima' if level >= calib_thr else 'por debajo'} del umbral"
                 )
-                status_label.configure(text_color=TEXT2)
+                _set_label_fg(status_label, TEXT2)
             else:
                 status_label.configure(text="●  Silencio... hablá o gritá para calibrar")
-                status_label.configure(text_color=TEXT3)
+                _set_label_fg(status_label, TEXT3)
 
             win.after(60, _redraw)
 
@@ -1068,6 +1070,16 @@ def _set_bg(widget, color):
             widget.configure(fg_color=color)
         else:
             widget.configure(bg=color)
+    except Exception:
+        pass
+
+
+def _set_label_fg(widget, color):
+    try:
+        if _ctk():
+            widget.configure(text_color=color)
+        else:
+            widget.configure(fg=color)
     except Exception:
         pass
 
