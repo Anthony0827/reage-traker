@@ -482,8 +482,8 @@ class RageTrackerApp:
         win = _CTK.CTkToplevel(parent) if _ctk() else _TK.Toplevel(parent)
         win.title("Configurar micrófono")
         win.configure(bg=BG)
-        win.geometry("560x640")
-        win.resizable(False, False)
+        win.geometry("560x700")
+        win.resizable(False, True)
         win.transient(parent)
         win.grab_set()
 
