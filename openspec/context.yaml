@@ -1,0 +1,47 @@
+# SDD Context — reage-traker
+
+## Project Stack
+
+| Category | Technology |
+|----------|------------|
+| Language | Python 3 |
+| Framework | Custom (customtkinter GUI) |
+| Libraries | opencv-python, numpy, sounddevice, customtkinter |
+| Test Runner | None detected |
+| Linter | None detected |
+| Formatter | None detected |
+| CI/CD | None detected |
+
+## Architecture Patterns
+
+- **Customtkinter GUI** — Main application interface
+- **Web dashboard** — Separate server component
+- **Data layer** — CSV-based data storage (sessions.csv, games.csv)
+
+## Conventions
+
+- Source code in `src/`
+- Web components in `web/`
+- Data files in `data/`
+- Utility functions in `utils/`
+
+## Testing Capabilities
+
+| Capability | Status |
+|------------|--------|
+| Test runner | Not configured |
+| Unit tests | Not configured |
+| Integration tests | Not configured |
+| Coverage | Not configured |
+| Linting | Not configured |
+
+## Strict TDD
+
+- **Status**: false
+- **Reason**: No test runner detected
+
+## Next Steps
+
+1. Configure testing stack (pytest recommended)
+2. Define project architecture patterns
+3. Set up CI/CD pipeline

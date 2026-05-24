@@ -1,15 +1,15 @@
 {
   "profile_name": "user",
-  "created_at": "2026-05-24T18:40:17",
+  "created_at": "2026-06-05T17:44:24",
   "environment": {
-    "avg_brightness": 104.3,
-    "avg_face_width_px": 327,
-    "detection_rate": 1.0,
-    "frames_sampled": 62
+    "avg_brightness": 106.6,
+    "avg_face_width_px": 116,
+    "detection_rate": 0.03,
+    "frames_sampled": 33
   },
   "thresholds": {
     "smile_scale_factor": 1.7,
-    "smile_min_neighbors": 22,
+    "smile_min_neighbors": 15,
     "smile_min_size": [
       30,
       30
@@ -23,30 +23,30 @@
     "brow_angry_threshold": 90,
     "brow_very_angry_threshold": 78,
     "mouth_tense_threshold": 88,
-    "frames_between_counts": 10,
-    "emotion_confirmation_frames": 5,
-    "_grid_search_best_score": 1.0,
+    "frames_between_counts": 18,
+    "emotion_confirmation_frames": 8,
+    "_grid_search_best_score": 0.562,
     "_grid_search_rates": {
-      "neutral": 0.0,
-      "happy": 1.0,
+      "neutral": 0.06,
+      "happy": 0.62,
       "angry": 0.0
     }
   },
   "baselines": {
     "neutral": {
       "frames_captured": 16,
-      "brow_mean": 93.94305646546968,
-      "mouth_mean": 98.88413133995526
+      "brow_mean": 75.37828627768756,
+      "mouth_mean": 78.77456736486972
     },
     "happy": {
       "frames_captured": 16,
-      "brow_mean": 91.35240009598249,
-      "mouth_mean": 94.73683279453226
+      "brow_mean": 80.82340525303101,
+      "mouth_mean": 82.35792881392152
     },
     "angry": {
-      "frames_captured": 17,
-      "brow_mean": 90.55352464915627,
-      "mouth_mean": 95.35449388641717
+      "frames_captured": 16,
+      "brow_mean": 80.02192551547172,
+      "mouth_mean": 80.76615778547051
     }
   }
 }

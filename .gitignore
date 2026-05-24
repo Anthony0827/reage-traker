@@ -15,6 +15,10 @@ __pycache__/
 data/*.csv
 data/calibration_profile.json
 
+# ===== Modelos de IA =====
+models/
+data/models/
+
 # ===== Sistema =====
 
 .DS_Store

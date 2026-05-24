@@ -7,6 +7,9 @@ numpy>=1.24
 # solo con emociones). En Linux instala también PortAudio: sudo apt install libportaudio2
 sounddevice>=0.4.6
 
+# Detección de insultos en tiempo real (Vosk STT - Spanish)
+vosk>=0.3.45
+
 # Alternativa a sounddevice (descomenta solo si no usas sounddevice):
 # PyAudio>=0.2.13
 
