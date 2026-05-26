@@ -20,7 +20,7 @@ from pathlib import Path
 # Raíz del proyecto (… / rage_tracker), independiente del cwd → robusto para .exe
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# Esquema canónico de sessions.csv. Las 4 últimas son las nuevas (Fase 3).
+# Esquema canónico de sessions.csv. Las 7 últimas son las nuevas (Fase 3 + insultos).
 BASE_SESSION_FIELDS = [
     "game", "date", "duration_seconds",
     "happy_count", "angry_count", "neutral_count",
@@ -31,9 +31,12 @@ BASE_SESSION_FIELDS = [
 SCREAM_FIELDS = [
     "scream_count", "scream_peak_db", "scream_total_seconds", "mic_device_name",
 ]
-SESSION_FIELDS = BASE_SESSION_FIELDS + SCREAM_FIELDS
+INSULT_FIELDS = [
+    "insult_count", "insult_peak_count", "insult_model_name",
+]
+SESSION_FIELDS = BASE_SESSION_FIELDS + SCREAM_FIELDS + INSULT_FIELDS
 
-# Valor por defecto por campo (para rellenar sesiones antiguas / sin micrófono)
+# Valor por defecto por campo (para rellenar sesiones antiguas / sin micrófono / sin insultos)
 # Uso 0 para numéricos y string vacío para los de texto, así los CSV viejos
 # se migran sin perder información y sin romper nada.
 _FIELD_DEFAULTS = {f: 0 for f in SESSION_FIELDS}
@@ -44,6 +47,8 @@ _FIELD_DEFAULTS.update({
     "scream_peak_db": 0.0,
     "scream_total_seconds": 0.0,
     "mic_device_name": "",
+    "insult_peak_count": 0,
+    "insult_model_name": "",
 })
 
 GAMES_FIELDS = ["game_name", "date_added", "genre", "notes"]
@@ -112,7 +117,7 @@ class DataManager:
                         for field in SESSION_FIELDS
                     })
             os.replace(tmp_path, self.sessions_file)
-            print("[i] sessions.csv migrado al nuevo esquema (columnas de micrófono añadidas).")
+            print("[i] sessions.csv migrado al nuevo esquema (columnas de micrófono y insultos añadidas).")
         except OSError:
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
@@ -167,7 +172,7 @@ class DataManager:
             csv.writer(f).writerow(row)
 
     def get_game_stats(self, game_name):
-        """Estadísticas acumuladas de un juego (incluye métricas de gritos)."""
+        """Estadísticas acumuladas de un juego (incluye métricas de gritos y insultos)."""
         stats = {
             "total_sessions": 0,
             "total_time": 0,
@@ -182,6 +187,9 @@ class DataManager:
             "total_screams": 0,
             "total_scream_seconds": 0.0,
             "avg_scream_count": 0,
+            # Fase 5 (insultos)
+            "total_insults": 0,
+            "avg_insult_count": 0,
         }
 
         if not os.path.exists(self.sessions_file):
@@ -204,11 +212,14 @@ class DataManager:
                 # Campos de micrófono: opcionales (.get con default)
                 stats["total_screams"] += _as_int(row.get("scream_count", 0))
                 stats["total_scream_seconds"] += _as_float(row.get("scream_total_seconds", 0))
+                # Campos de insultos: opcionales (.get con default)
+                stats["total_insults"] += _as_int(row.get("insult_count", 0))
 
         if stats["total_sessions"] > 0:
             stats["avg_rage_percentage"] /= stats["total_sessions"]
             stats["avg_happy_percentage"] /= stats["total_sessions"]
             stats["avg_scream_count"] = stats["total_screams"] / stats["total_sessions"]
+            stats["avg_insult_count"] = stats["total_insults"] / stats["total_sessions"]
 
         return stats
 

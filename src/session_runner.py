@@ -6,11 +6,13 @@ Lanza UNA sesión según los sensores elegidos y persiste el resultado.
 Modos soportados:
 - "emotions"            -> EmotionDetector normal (cámara + HUD).
 - "emotions" + "scream" -> EmotionDetector con audio_monitor (mini-VU en el HUD).
-                           Cada grito confirmado SUMA al contador de enfado.
+                            Cada grito confirmado SUMA al contador de enfado.
 - "scream" (solo)       -> sesión SIN cámara: ventana ligera con el medidor
-                           de volumen, timer y contador de gritos.
+                            de volumen, timer y contador de gritos.
+- "emotions" + "insults" -> EmotionDetector con insult_detector (contador de insultos)
+- "emotions" + "scream" + "insults" -> ambos sensores de audio activos
 
-Es el punto al que llama `main.py --session ...` (subproceso lanzado por la GUI).
+Es el punto al que llama `main.py --session` (subproceso lanzado por la GUI).
 Se lanza como subproceso para evitar líos entre el event loop de Tk y el de
 OpenCV (sobre todo en macOS, donde compiten por el hilo principal).
 """
@@ -36,16 +38,31 @@ except Exception:  # pragma: no cover
     def audio_available() -> bool:  # type: ignore
         return False
 
+try:
+    from src.insult_detector import InsultDetector
+except Exception:  # pragma: no cover
+    InsultDetector = None  # type: ignore
+
+    def audio_available() -> bool:  # type: ignore
+        return False
+
 
 # Cuántos "momentos de enfado" suma cada grito confirmado. 1.0 = un grito
 # equivale a una detección de cara enfadada. Súbelo si quieres que los gritos
 # pesen más en el rage index.
 RAGE_PER_SCREAM = 1.0
 
+# Cuántos "momentos de enfado" suma cada insulto detectado. 0.3 = un insulto
+# equivale a 0.3 de enfado (menos que un grito).
+RAGE_PER_INSULT = 0.3
+
 # Claves de micrófono que el monitor es la fuente de verdad y deben acabar
 # siempre en el resumen (y por tanto en el CSV / dashboard).
 _SCREAM_KEYS = (
     "scream_count", "scream_peak_db", "scream_total_seconds", "mic_device_name",
+)
+_INSULT_KEYS = (
+    "insult_count", "insult_peak_count", "insult_model_name",
 )
 
 # Esquema de emociones vacío para sesiones de solo-gritos (sin cámara).
@@ -88,6 +105,37 @@ def _fold_screams_into_rage(summary: dict, weight: float = RAGE_PER_SCREAM) -> d
     return summary
 
 
+def _fold_insults_into_rage(summary: dict, weight: float = RAGE_PER_INSULT) -> dict:
+    """Suma los insultos a la medición de enfado y recalcula porcentajes.
+
+    Cada insulto confirmado (match con lexicon) cuenta como `weight` "momentos de
+    enfado". Después recalcula los porcentajes happy/angry/neutral sobre el nuevo
+    total para que el rage index del dashboard refleje también los insultos."""
+    insults = int(summary.get("insult_count", 0) or 0)
+    if insults <= 0 or weight <= 0:
+        return summary
+
+    add = int(round(insults * weight))
+    happy = int(summary.get("happy_count", 0) or 0)
+    angry = int(summary.get("angry_count", 0) or 0) + add
+    neutral = int(summary.get("neutral_count", 0) or 0)
+
+    summary["angry_count"] = angry
+    # Cada insulto es también un "pico" de rage.
+    summary["peak_rage_count"] = int(summary.get("peak_rage_count", 0) or 0) + add
+
+    total = happy + angry + neutral
+    if total > 0:
+        summary["happy_percentage"] = round(happy / total * 100.0, 1)
+        summary["angry_percentage"] = round(angry / total * 100.0, 1)
+        summary["neutral_percentage"] = round(neutral / total * 100.0, 1)
+
+    # Si la sesión quedó dominada por insultos, el trend pasa a 'rage'.
+    if summary.get("angry_percentage", 0) >= 50:
+        summary["emotional_trend"] = "rage"
+    return summary
+
+
 def run_session(
     game: str,
     sensors: Iterable[str],
@@ -100,7 +148,8 @@ def run_session(
     sensors = set(sensors)
     want_emotions = "emotions" in sensors
     want_scream = "scream" in sensors
-    if not (want_emotions or want_scream):
+    want_insults = "insults" in sensors
+    if not (want_emotions or want_scream or want_insults):
         print("[!] No se ha seleccionado ningún sensor. Nada que medir.")
         return None
 
@@ -108,28 +157,41 @@ def run_session(
 
     # Monitor de micrófono (si procede)
     monitor = None
-    if want_scream:
+    insult_detector = None
+    if want_scream or want_insults:
         if AudioMonitor is None or not audio_available():
             print("[!] No hay backend de audio disponible (instala 'sounddevice').")
-            if not want_emotions:
+            if not want_emotions and not want_insults:
                 return None
             print("    Continuo solo con detección de emociones.")
             want_scream = False
+            want_insults = False
+        elif want_insults and InsultDetector is None:
+            print("[!] El módulo de insultos no está disponible. Desactivando sensor.")
+            want_insults = False
         else:
-            monitor = AudioMonitor(
-                device_index=mic_index,
-                threshold_pct=threshold,
-                sensitivity=sensitivity,
-            )
-            if not monitor.start():
-                why = getattr(monitor, "last_error", "") or "motivo desconocido"
-                print(f"[!] No se pudo abrir el micrófono ({why}). Continuo sin gritos.")
-                monitor = None
-                if not want_emotions:
-                    return None
+            if want_scream:
+                monitor = AudioMonitor(
+                    device_index=mic_index,
+                    threshold_pct=threshold,
+                    sensitivity=sensitivity,
+                )
+                if not monitor.start():
+                    why = getattr(monitor, "last_error", "") or "motivo desconocido"
+                    print(f"[!] No se pudo abrir el micrófono ({why}). Continuo sin gritos.")
+                    monitor = None
+                    if not want_emotions and not want_insults:
+                        return None
+            if want_insults:
+                insult_detector = InsultDetector()
+                if not insult_detector.start():
+                    why = getattr(insult_detector, "last_error", "") or "motivo desconocido"
+                    print(f"[!] No se pudo iniciar el detector de insultos ({why}).")
+                    insult_detector = None
 
     summary: Optional[dict] = None
     monitor_summary: dict = {}
+    insult_summary: dict = {}
     try:
         if want_emotions:
             detector = EmotionDetector(
@@ -143,9 +205,13 @@ def run_session(
         # fuente de verdad para los campos de gritos).
         if monitor is not None:
             monitor_summary = monitor.get_summary()
+        if insult_detector is not None:
+            insult_summary = insult_detector.get_summary()
     finally:
         if monitor is not None:
             monitor.stop()
+        if insult_detector is not None:
+            insult_detector.stop()
 
     if summary is None:
         return None
@@ -156,16 +222,27 @@ def run_session(
             if key in monitor_summary:
                 summary[key] = monitor_summary[key]
 
+    # Asegura que las métricas de insultos están en el resumen.
+    if insult_summary:
+        for key in _INSULT_KEYS:
+            if key in insult_summary:
+                summary[key] = insult_summary[key]
+
     # Acopla los gritos al rage SOLO si había cámara: en solo-gritos no hay
     # baseline de emociones y forzaríamos 100% de rage de forma artificial.
     if want_emotions and want_scream:
         summary = _fold_screams_into_rage(summary)
+    
+    # Acopla los insultos al rage SOLO si había cámara.
+    if want_emotions and want_insults:
+        summary = _fold_insults_into_rage(summary)
 
     dm.save_session(summary)
     print(
         f"\n[OK] Sesión guardada: {game} | "
         f"Rage {summary.get('angry_percentage', 0):.0f}% · "
-        f"Gritos {summary.get('scream_count', 0)}"
+        f"Gritos {summary.get('scream_count', 0)} · "
+        f"Insultos {summary.get('insult_count', 0)}"
     )
     return summary
 

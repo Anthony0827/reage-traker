@@ -161,8 +161,8 @@ def build_parser():
     p.add_argument("--game", default="Sesión",
                    help="Nombre del juego para la sesión.")
     p.add_argument("--sensors", nargs="+", default=["emotions"],
-                   choices=["emotions", "scream"],
-                   help="Sensores a activar: emotions, scream o ambos.")
+                   choices=["emotions", "scream", "insults"],
+                   help="Sensores a activar: emotions, scream o insults.")
     p.add_argument("--mic", type=int, default=None,
                    help="Índice del micrófono (sounddevice). Por defecto: el del sistema.")
     p.add_argument("--threshold", type=float, default=80.0,

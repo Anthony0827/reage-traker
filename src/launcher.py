@@ -411,10 +411,13 @@ class RageTrackerApp:
         sens.pack(fill="x", pady=(2, 12))
         self.emo_var = _bool_var(True)
         self.scream_var = _bool_var(audio_available())
+        self.insult_var = _bool_var(False)
         _mk_checkbox(sens, "😤  EMOCIONES   ·   detecta tu cara (cámara)",
                      self.emo_var).pack(anchor="w", padx=16, pady=(14, 6))
         _mk_checkbox(sens, "🔊  GRITOS      ·   detecta tu micrófono",
                      self.scream_var, command=self._toggle_mic_button).pack(anchor="w", padx=16, pady=(0, 6))
+        _mk_checkbox(sens, "🎯  INSULTOS (beta) ·   detecta lenguaje ofensivo",
+                     self.insult_var, command=self._toggle_insult_button).pack(anchor="w", padx=16, pady=(0, 6))
         _mk_label(sens, "── puedes activar uno, otro, o ambos ──",
                   (MONO, 9), TEXT3, bg=SURFACE).pack(anchor="w", padx=16, pady=(0, 12))
 
@@ -427,6 +430,12 @@ class RageTrackerApp:
         self.mic_btn_frame = _mk_frame(body, fg=BG, corner=0)
         _mk_button(self.mic_btn_frame, "🎤  CONFIGURAR MICRÓFONO",
                    self._open_mic_config, fg=SURFACE2, hover=SURFACE3, text_color=CYAN,
+                   height=42, font=(MONO, 13, "bold")).pack(fill="x")
+
+        # ---- Botón de configuración de insultos (visible solo si INSULTOS) ----
+        self.insult_btn_frame = _mk_frame(body, fg=BG, corner=0)
+        _mk_button(self.insult_btn_frame, "🎯  CONFIGURAR INSULTOS",
+                   self._open_insult_config, fg=SURFACE2, hover=SURFACE3, text_color=CYAN,
                    height=42, font=(MONO, 13, "bold")).pack(fill="x")
 
         # ---- C) Botones ----
@@ -447,6 +456,17 @@ class RageTrackerApp:
         else:
             try:
                 self.mic_btn_frame.pack_forget()
+            except Exception:
+                pass
+
+    def _toggle_insult_button(self):
+        """Muestra/oculta botón de configuración de insultos (similar a _toggle_mic_button)."""
+        want = bool(self.insult_var.get())
+        if want:
+            self.insult_btn_frame.pack(fill="x", pady=(0, 12), after=None)
+        else:
+            try:
+                self.insult_btn_frame.pack_forget()
             except Exception:
                 pass
 
@@ -1014,8 +1034,10 @@ class RageTrackerApp:
             sensors.append("emotions")
         if self.scream_var.get():
             sensors.append("scream")
+        if self.insult_var.get():
+            sensors.append("insults")
         if not sensors:
-            self._warn("Selecciona al menos un sensor (emociones o gritos).")
+            self._warn("Selecciona al menos un sensor (emociones, gritos o insultos).")
             return
 
         game = self._resolve_game()
