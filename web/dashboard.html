@@ -916,6 +916,11 @@
                     <div class="value"><span id="vital-screams">0</span><span class="unit">grit</span></div>
                     <div class="sub" id="vital-screams-sub">—</div>
                 </div>
+                <div class="vital" id="vital-insult-tile" style="display:none">
+                    <div class="label">// Insult Index (Vosk)</div>
+                    <div class="value"><span id="vital-insults">0</span><span class="unit">x</span></div>
+                    <div class="sub" id="vital-insults-sub">—</div>
+                </div>
             </div>
         </div>
 
@@ -955,6 +960,20 @@
             <div id="scream-leaderboard"></div>
         </div>
 
+        <!-- INSULT LEADERBOARD (solo si hay datos de insultos) -->
+        <div class="section-head" id="insult-lb-head" style="display:none">
+            <span class="num">🗣️</span>
+            <h2>Insult Leaderboard (Vosk)</h2>
+            <div class="rule"></div>
+        </div>
+        <div class="panel" id="insult-lb-panel" style="display:none">
+            <div class="panel-title">
+                <h3>Top juegos por número de insultos</h3>
+                <span class="note">Total acumulado</span>
+            </div>
+            <div id="insult-leaderboard"></div>
+        </div>
+
         <!-- CHARTS GRID -->
         <div class="chart-grid">
             <div class="panel">
@@ -985,6 +1004,7 @@
                 <div class="filter-row" id="heatmap-toggle" style="margin:0">
                     <button class="chip active" data-metric="rage">Rage</button>
                     <button class="chip" data-metric="scream" id="heat-chip-scream" style="display:none">Gritos</button>
+                    <button class="chip" data-metric="insult" id="heat-chip-insult" style="display:none">Insultos</button>
                     <button class="chip" data-metric="both" id="heat-chip-both" style="display:none">Ambos</button>
                 </div>
             </div>
@@ -1050,11 +1070,17 @@ const STATE = {
     heatMetric: 'rage',
 };
 
-// ¿Hay datos de micrófono en alguna sesión? Decide si se muestran las
-// secciones de gritos (compatibilidad con CSV antiguos sin esas columnas).
+// ¿Hay datos de micrófono o insultos en alguna sesión? Decide si se muestran las
+// secciones de gritos y de insultos (compatibilidad con CSV antiguos sin esas columnas).
 function hasScreamData(d) {
     return !!(d && d.sessions && d.sessions.some(
         s => (s.scream_count || 0) > 0 || (s.scream_total_seconds || 0) > 0
+    ));
+}
+
+function hasInsultData(d) {
+    return !!(d && d.sessions && d.sessions.some(
+        s => (s.insult_count || 0) > 0 || (s.insult_peak_count || 0) > 0
     ));
 }
 

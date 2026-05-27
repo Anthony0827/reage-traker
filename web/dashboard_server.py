@@ -127,6 +127,10 @@ class RageTrackerHandler(http.server.SimpleHTTPRequestHandler):
                         'scream_peak_db': self._as_float(row.get('scream_peak_db', 0)),
                         'scream_total_seconds': self._as_float(row.get('scream_total_seconds', 0)),
                         'mic_device_name': row.get('mic_device_name', '') or '',
+                        # --- campos de insultos (Vosk STT) ---
+                        'insult_count': self._as_int(row.get('insult_count', 0)),
+                        'insult_peak_count': self._as_int(row.get('insult_peak_count', 0)),
+                        'insult_model_name': row.get('insult_model_name', '') or '',
                     })
 
         global_stats = self.calculate_global_stats(sessions)
@@ -157,6 +161,7 @@ class RageTrackerHandler(http.server.SimpleHTTPRequestHandler):
         total_rage = sum(s['angry_count'] for s in sessions)
         total_happy = sum(s['happy_count'] for s in sessions)
         total_screams = sum(s.get('scream_count', 0) for s in sessions)
+        total_insults = sum(s.get('insult_count', 0) for s in sessions)
 
         game_stats = {}
         for session in sessions:
@@ -195,6 +200,7 @@ class RageTrackerHandler(http.server.SimpleHTTPRequestHandler):
             'total_rage_moments': total_rage,
             'total_happy_moments': total_happy,
             'total_screams': total_screams,
+            'total_insults': total_insults,
             'most_played_game': most_played,
             'ragiest_game': ragiest,
             'happiest_game': happiest,

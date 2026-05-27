@@ -432,6 +432,12 @@ class RageTrackerApp:
                    self._open_mic_config, fg=SURFACE2, hover=SURFACE3, text_color=CYAN,
                    height=42, font=(MONO, 13, "bold")).pack(fill="x")
 
+        # ---- Botón de calibración de emociones (si EMOCIONES activado) ----
+        self.calib_btn_frame = _mk_frame(body, fg=BG, corner=0)
+        _mk_button(self.calib_btn_frame, "🎭  CONFIGURAR CARA",
+                   self._open_calibration, fg=SURFACE2, hover=SURFACE3, text_color=CYAN,
+                   height=42, font=(MONO, 13, "bold")).pack(fill="x")
+
         # ---- Botón de configuración de insultos (visible solo si INSULTOS) ----
         self.insult_btn_frame = _mk_frame(body, fg=BG, corner=0)
         _mk_button(self.insult_btn_frame, "🎯  CONFIGURAR INSULTOS",
@@ -456,6 +462,16 @@ class RageTrackerApp:
         else:
             try:
                 self.mic_btn_frame.pack_forget()
+            except Exception:
+                pass
+
+    def _toggle_calib_button(self):
+        want = bool(self.emo_var.get())
+        if want:
+            self.calib_btn_frame.pack(fill="x", pady=(0, 12), after=None)
+        else:
+            try:
+                self.calib_btn_frame.pack_forget()
             except Exception:
                 pass
 
