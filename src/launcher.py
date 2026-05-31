@@ -413,7 +413,7 @@ class RageTrackerApp:
         self.scream_var = _bool_var(audio_available())
         self.insult_var = _bool_var(False)
         _mk_checkbox(sens, "😤  EMOCIONES   ·   detecta tu cara (cámara)",
-                     self.emo_var).pack(anchor="w", padx=16, pady=(14, 6))
+                     self.emo_var, command=self._toggle_calib_button).pack(anchor="w", padx=16, pady=(14, 6))
         _mk_checkbox(sens, "🔊  GRITOS      ·   detecta tu micrófono",
                      self.scream_var, command=self._toggle_mic_button).pack(anchor="w", padx=16, pady=(0, 6))
         _mk_checkbox(sens, "🎯  INSULTOS (beta) ·   detecta lenguaje ofensivo",
@@ -454,6 +454,7 @@ class RageTrackerApp:
                    height=34, font=(MONO, 11)).pack(fill="x", pady=(8, 0))
 
         self._toggle_mic_button()  # estado inicial coherente
+        self._toggle_calib_button()  # estado inicial coherente
 
     def _toggle_mic_button(self):
         want = bool(self.scream_var.get())
