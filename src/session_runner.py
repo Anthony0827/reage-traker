@@ -201,7 +201,7 @@ def run_session(
             )
             summary = detector.run()
         else:
-            summary = _run_scream_only_session(game, monitor)
+            summary = _run_audioonly_session(game, monitor, insult_detector)
 
         # Capturo las métricas del micro ANTES de pararlo (el monitor es la
         # fuente de verdad para los campos de gritos).
@@ -249,17 +249,28 @@ def run_session(
     return summary
 
 
-def _run_scream_only_session(game: str, monitor) -> Optional[dict]:
-    """Sesión sin cámara: solo micrófono. Ventana ligera con VU + timer.
+def _run_audioonly_session(
+    game: str, monitor, insult_detector=None
+) -> Optional[dict]:
+    """Sesión sin cámara: micrófono (gritos y/o insultos). Ventana OpenCV ligera.
 
-    Creo una ventana de OpenCV desde cero (sin EmotionDetector) porque no hay
-    cámara que inicializar. El HUD es minimalista: barra de volumen grande,
-    contador de gritos, pico dBFS y segundos gritando."""
-    if monitor is None:
+    - Si monitor activo: muestra barra VU + contadores de gritos.
+    - Si insult_detector activo: añade contadores de insultos.
+    - Acepta cualquier combinación de los dos (incluso solo insultos).
+    """
+    if monitor is None and insult_detector is None:
         return None
 
-    window = "Rage Tracker - Gritos"
-    W, H = 760, 440
+    has_scream = monitor is not None
+    has_insult = insult_detector is not None
+    sensor_label = (
+        "GRITOS + INSULTOS" if (has_scream and has_insult)
+        else ("GRITOS" if has_scream else "INSULTOS")
+    )
+
+    window = f"Rage Tracker - {sensor_label.title()}"
+    W = 760
+    H = 480 if has_insult else 440
     start = time.time()
 
     while True:
@@ -267,49 +278,80 @@ def _run_scream_only_session(game: str, monitor) -> Optional[dict]:
         frame[:] = hud.COLOR_BG_DARK
 
         elapsed = time.time() - start
-        summary_live = monitor.get_summary()
-        level = float(getattr(monitor, "level", 0.0))
-        peak = float(getattr(monitor, "peak_level", 0.0))
-        thr = float(getattr(monitor, "threshold_pct", 80.0))
-        screaming = bool(getattr(monitor, "is_screaming", False))
 
         # Barra superior
         hud.draw_panel(frame, 0, 0, W, 56, alpha=0.9, border_color=hud.COLOR_CYAN)
-        hud.draw_text(frame, f"RAGE TRACKER  -  {game}  [SOLO GRITOS]",
+        hud.draw_text(frame, f"RAGE TRACKER  -  {game}  [{sensor_label}]",
                       (16, 26), 0.6, hud.COLOR_CYAN, 1, shadow=True)
         hud.draw_text(frame, f"{hud.format_time(elapsed)}", (W - 110, 26),
                       0.7, hud.COLOR_TEXT, 1, shadow=True)
 
-        # Medidor grande
-        bx, by, bw, bh = 40, 150, W - 80, 46
-        cv2.rectangle(frame, (bx, by), (bx + bw, by + bh), hud.COLOR_BG, -1)
-        fill = int(bw * max(0.0, min(100.0, level)) / 100.0)
-        color = hud.COLOR_BAD if level >= 90 else (hud.COLOR_WARN if level >= 60 else hud.COLOR_GOOD)
-        if fill > 0:
-            cv2.rectangle(frame, (bx, by), (bx + fill, by + bh), color, -1)
-        # Marcador de pico-hold
-        px = bx + int(bw * max(0.0, min(100.0, peak)) / 100.0)
-        cv2.line(frame, (px, by - 4), (px, by + bh + 4), hud.COLOR_TEXT, 2, cv2.LINE_AA)
-        # Línea de umbral
-        tx = bx + int(bw * max(0.0, min(100.0, thr)) / 100.0)
-        cv2.line(frame, (tx, by - 8), (tx, by + bh + 8), hud.COLOR_ANGRY, 2, cv2.LINE_AA)
-        cv2.rectangle(frame, (bx, by), (bx + bw, by + bh), hud.COLOR_TEXT_DIM, 1)
-        hud.draw_text(frame, "VOLUMEN DEL MICROFONO", (bx, by - 12), 0.5, hud.COLOR_TEXT_DIM, 1)
-        hud.draw_text(frame, f"umbral {int(thr)}%", (tx + 6, by + bh + 24), 0.42, hud.COLOR_ANGRY, 1)
-        hud.draw_text(frame, f"{int(level)}%", (bx + bw - 70, by + bh + 24), 0.7,
-                      hud.COLOR_TEXT, 1, shadow=True)
+        screaming = False
+        counters_y = 80
 
-        # Contadores
-        scount = summary_live.get("scream_count", 0)
-        hud.draw_text(frame, "GRITOS", (40, 300), 0.6, hud.COLOR_TEXT_DIM, 1)
-        hud.draw_text(frame, str(scount), (40, 350), 1.6,
-                      hud.COLOR_ANGRY if scount else hud.COLOR_TEXT, 3, shadow=True)
-        hud.draw_text(frame, "PICO (dBFS)", (260, 300), 0.6, hud.COLOR_TEXT_DIM, 1)
-        hud.draw_text(frame, f"{summary_live.get('scream_peak_db', 0)}", (260, 350),
-                      1.1, hud.COLOR_TEXT, 2, shadow=True)
-        hud.draw_text(frame, "SEG. GRITANDO", (480, 300), 0.6, hud.COLOR_TEXT_DIM, 1)
-        hud.draw_text(frame, f"{summary_live.get('scream_total_seconds', 0)}", (480, 350),
-                      1.1, hud.COLOR_TEXT, 2, shadow=True)
+        if has_scream:
+            summary_live = monitor.get_summary()
+            level = float(getattr(monitor, "level", 0.0))
+            peak = float(getattr(monitor, "peak_level", 0.0))
+            thr = float(getattr(monitor, "threshold_pct", 80.0))
+            screaming = bool(getattr(monitor, "is_screaming", False))
+
+            # Barra VU
+            bx, by, bw, bh = 40, 110, W - 80, 46
+            cv2.rectangle(frame, (bx, by), (bx + bw, by + bh), hud.COLOR_BG, -1)
+            fill = int(bw * max(0.0, min(100.0, level)) / 100.0)
+            bar_color = (hud.COLOR_BAD if level >= 90
+                         else (hud.COLOR_WARN if level >= 60 else hud.COLOR_GOOD))
+            if fill > 0:
+                cv2.rectangle(frame, (bx, by), (bx + fill, by + bh), bar_color, -1)
+            # Pico-hold
+            px = bx + int(bw * max(0.0, min(100.0, peak)) / 100.0)
+            cv2.line(frame, (px, by - 4), (px, by + bh + 4), hud.COLOR_TEXT, 2, cv2.LINE_AA)
+            # Umbral
+            tx = bx + int(bw * max(0.0, min(100.0, thr)) / 100.0)
+            cv2.line(frame, (tx, by - 8), (tx, by + bh + 8), hud.COLOR_ANGRY, 2, cv2.LINE_AA)
+            cv2.rectangle(frame, (bx, by), (bx + bw, by + bh), hud.COLOR_TEXT_DIM, 1)
+            hud.draw_text(frame, "VOLUMEN DEL MICROFONO", (bx, by - 12),
+                          0.5, hud.COLOR_TEXT_DIM, 1)
+            hud.draw_text(frame, f"umbral {int(thr)}%", (tx + 6, by + bh + 24),
+                          0.42, hud.COLOR_ANGRY, 1)
+            hud.draw_text(frame, f"{int(level)}%", (bx + bw - 70, by + bh + 24),
+                          0.7, hud.COLOR_TEXT, 1, shadow=True)
+
+            counters_y = by + bh + 50
+
+            scount = summary_live.get("scream_count", 0)
+            hud.draw_text(frame, "GRITOS", (40, counters_y),
+                          0.6, hud.COLOR_TEXT_DIM, 1)
+            hud.draw_text(frame, str(scount), (40, counters_y + 50), 1.6,
+                          hud.COLOR_ANGRY if scount else hud.COLOR_TEXT, 3, shadow=True)
+            hud.draw_text(frame, "PICO (dBFS)", (260, counters_y),
+                          0.6, hud.COLOR_TEXT_DIM, 1)
+            hud.draw_text(frame, f"{summary_live.get('scream_peak_db', 0)}",
+                          (260, counters_y + 50), 1.1, hud.COLOR_TEXT, 2, shadow=True)
+            hud.draw_text(frame, "SEG. GRITANDO", (480, counters_y),
+                          0.6, hud.COLOR_TEXT_DIM, 1)
+            hud.draw_text(frame, f"{summary_live.get('scream_total_seconds', 0)}",
+                          (480, counters_y + 50), 1.1, hud.COLOR_TEXT, 2, shadow=True)
+
+            counters_y += 80
+
+        if has_insult:
+            isummary = insult_detector.get_summary()
+            icount = int(isummary.get("insult_count", 0))
+
+            if has_scream:
+                cv2.line(frame, (40, counters_y - 10), (W - 40, counters_y - 10),
+                         hud.COLOR_TEXT_DIM, 1)
+
+            hud.draw_text(frame, "INSULTOS", (40, counters_y),
+                          0.6, hud.COLOR_TEXT_DIM, 1)
+            hud.draw_text(frame, str(icount), (40, counters_y + 50), 1.6,
+                          hud.COLOR_ANGRY if icount else hud.COLOR_TEXT, 3, shadow=True)
+            hud.draw_text(frame, "PICO INSULTOS", (260, counters_y),
+                          0.6, hud.COLOR_TEXT_DIM, 1)
+            hud.draw_text(frame, f"{isummary.get('insult_peak_count', 0)}",
+                          (260, counters_y + 50), 1.1, hud.COLOR_TEXT, 2, shadow=True)
 
         if screaming:
             cv2.rectangle(frame, (2, 2), (W - 2, H - 2), hud.COLOR_ANGRY, 3)
@@ -317,22 +359,31 @@ def _run_scream_only_session(game: str, monitor) -> Optional[dict]:
         hud.draw_hotkeys_strip(frame, [("Q", "Terminar"), ("R", "Reiniciar")])
         cv2.imshow(window, frame)
 
-        key = cv2.waitKey(30) & 0xFF
-        if key == ord("q"):
+        pressed = cv2.waitKey(30) & 0xFF
+        if pressed == ord("q"):
             break
-        if key == ord("r"):
-            monitor.reset()
+        if pressed == ord("r"):
+            if monitor:
+                monitor.reset()
+            if insult_detector:
+                insult_detector.reset()
             start = time.time()
 
     cv2.destroyWindow(window)
 
     total_time = int(time.time() - start)
-    summary = {
+    final_summary = {
         "game": game,
         "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "duration_seconds": total_time,
         "total_frames": 0,
     }
-    summary.update(_EMPTY_EMOTIONS)
-    summary.update(monitor.get_summary())
-    return summary
+    final_summary.update(_EMPTY_EMOTIONS)
+    if monitor is not None:
+        final_summary.update(monitor.get_summary())
+    if insult_detector is not None:
+        for ikey in _INSULT_KEYS:
+            val = insult_detector.get_summary().get(ikey)
+            if val is not None:
+                final_summary[ikey] = val
+    return final_summary

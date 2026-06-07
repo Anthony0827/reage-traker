@@ -1042,7 +1042,7 @@
             <div style="overflow-x:auto;">
                 <table class="log-table">
                     <thead>
-                        <tr>
+                        <tr id="log-thead-row">
                             <th style="width:140px">Fecha</th>
                             <th>Juego</th>
                             <th style="width:90px">Duración</th>
@@ -1050,6 +1050,8 @@
                             <th style="width:160px">Happy</th>
                             <th style="width:80px">Peaks</th>
                             <th style="width:120px">Tendencia</th>
+                            <th id="log-th-gritos" style="width:80px;display:none">Gritos</th>
+                            <th id="log-th-insultos" style="width:80px;display:none">Insultos</th>
                         </tr>
                     </thead>
                     <tbody id="log-tbody"></tbody>
@@ -1168,6 +1170,11 @@ function render() {
     const scream = hasScreamData(d);
     toggleScreamUI(scream);
     if (scream) renderScreamLeaderboard(d);
+
+    // --- secciones de insultos (solo si existen datos de Vosk) ---
+    const insult = hasInsultData(d);
+    toggleInsultUI(insult);
+    if (insult) renderInsultLeaderboard(d);
 }
 
 function toggleScreamUI(show) {
@@ -1180,8 +1187,27 @@ function toggleScreamUI(show) {
         const el = document.getElementById(id);
         if (el) el.style.display = disp;
     }
-    if (!show && STATE.heatMetric !== 'rage') {
-        STATE.heatMetric = 'rage';  // reset si se pierden los datos de gritos
+    const thGritos = document.getElementById('log-th-gritos');
+    if (thGritos) thGritos.style.display = show ? '' : 'none';
+    if (!show && (STATE.heatMetric === 'scream' || STATE.heatMetric === 'both')) {
+        STATE.heatMetric = 'rage';
+    }
+}
+
+function toggleInsultUI(show) {
+    const disp = show ? '' : 'none';
+    const ids = [
+        'vital-insult-tile', 'insult-lb-head', 'insult-lb-panel',
+        'heat-chip-insult',
+    ];
+    for (const id of ids) {
+        const el = document.getElementById(id);
+        if (el) el.style.display = disp;
+    }
+    const thInsultos = document.getElementById('log-th-insultos');
+    if (thInsultos) thInsultos.style.display = show ? '' : 'none';
+    if (!show && STATE.heatMetric === 'insult') {
+        STATE.heatMetric = 'rage';
     }
 }
 
@@ -1238,6 +1264,16 @@ function renderHero(d) {
         $('#vital-screams-sub').textContent = totalScreamSec > 0
             ? `// ${fmtTimeShort(Math.round(totalScreamSec))} gritando`
             : '// eventos de grito';
+    }
+
+    // Insult Index (insultos totales) — el contenedor se muestra/oculta en render()
+    const totalInsults = sessions.reduce((s, x) => s + (x.insult_count || 0), 0);
+    if ($('#vital-insults')) {
+        animateNumber($('#vital-insults'), totalInsults);
+        const insultSessions = sessions.filter(s => (s.insult_count || 0) > 0).length;
+        $('#vital-insults-sub').textContent = insultSessions > 0
+            ? `// en ${insultSessions} sesión${insultSessions === 1 ? '' : 'es'}`
+            : '// insultos detectados';
     }
 }
 
@@ -1433,9 +1469,26 @@ function renderInsights(d) {
         const loudest = [...sessions].sort((a, b) => (b.scream_count || 0) - (a.scream_count || 0))[0];
         if (loudest && (loudest.scream_count || 0) > 0) {
             const mins = Math.max(1, Math.round(loudest.duration_seconds / 60));
+            const totalScreams = sessions.reduce((s, x) => s + (x.scream_count || 0), 0);
+            const totalMins = Math.max(1, Math.round(sessions.reduce((s, x) => s + x.duration_seconds, 0) / 60));
+            const screamRate = (totalScreams / totalMins * 60).toFixed(1);
             insights.push({
                 tag: 'Sesión más ruidosa',
-                html: `En tu peor sesión de <strong>${escapeHtml(loudest.game)}</strong> gritaste <span class="num">${loudest.scream_count}</span> ${loudest.scream_count === 1 ? 'vez' : 'veces'} en ${mins} minuto${mins === 1 ? '' : 's'}.`,
+                html: `En tu peor sesión de <strong>${escapeHtml(loudest.game)}</strong> gritaste <span class="num">${loudest.scream_count}</span> ${loudest.scream_count === 1 ? 'vez' : 'veces'} en ${mins} minuto${mins === 1 ? '' : 's'}. Media global: <span class="num">${screamRate}</span> gritos/h.`,
+                cls: 'is-warning',
+            });
+        }
+    }
+
+    // 8. Sesión más insultante (solo si hay datos de Vosk)
+    if (hasInsultData(d)) {
+        const rudest = [...sessions].sort((a, b) => (b.insult_count || 0) - (a.insult_count || 0))[0];
+        if (rudest && (rudest.insult_count || 0) > 0) {
+            const totalInsults = sessions.reduce((s, x) => s + (x.insult_count || 0), 0);
+            const insultSessions = sessions.filter(s => (s.insult_count || 0) > 0).length;
+            insights.push({
+                tag: 'Boca más sucia',
+                html: `Tu sesión más intensa de <strong>${escapeHtml(rudest.game)}</strong> acumuló <span class="num">${rudest.insult_count}</span> insultos. Total acumulado: <span class="num">${totalInsults}</span> en ${insultSessions} sesión${insultSessions === 1 ? '' : 'es'}.`,
                 cls: 'is-warning',
             });
         }
@@ -1514,6 +1567,36 @@ function renderScreamLeaderboard(d) {
     if (el) el.innerHTML = html || '<div class="insight">Sin gritos registrados todavía.</div>';
 }
 
+function renderInsultLeaderboard(d) {
+    const byGame = {};
+    for (const s of d.sessions) {
+        if (!byGame[s.game]) byGame[s.game] = {sessions: 0, insults: 0, peaks: 0};
+        const g = byGame[s.game];
+        g.sessions++;
+        g.insults += (s.insult_count || 0);
+        g.peaks = Math.max(g.peaks, s.insult_peak_count || 0);
+    }
+    const rows = Object.entries(byGame)
+        .map(([name, g]) => ({name, insults: g.insults, sessions: g.sessions, peaks: g.peaks}))
+        .filter(r => r.insults > 0)
+        .sort((a, b) => b.insults - a.insults);
+
+    const max = Math.max(...rows.map(r => r.insults), 1);
+    const html = rows.map((r, i) => {
+        const widthPct = (r.insults / max) * 100;
+        return `
+        <div class="lb-row">
+            <span class="lb-rank">${String(i+1).padStart(2,'0')}</span>
+            <span class="lb-name">${escapeHtml(r.name)}</span>
+            <span class="lb-meta">${r.sessions}s · pico ${r.peaks}</span>
+            <div class="lb-bar"><div class="fill" style="width:${widthPct}%;background:var(--warn)"></div></div>
+            <span class="lb-pct">${r.insults}</span>
+        </div>`;
+    }).join('');
+    const el = $('#insult-leaderboard');
+    if (el) el.innerHTML = html || '<div class="insight">Sin insultos registrados todavía.</div>';
+}
+
 // =========================================================================
 // TIMELINE CHART (Chart.js)
 // =========================================================================
@@ -1533,6 +1616,11 @@ function renderTimelineChart(d) {
     const happy = sessions.map(s => s.happy_percentage);
     const showScream = hasScreamData(d);
     const screams = sessions.map(s => s.scream_count || 0);
+    const showInsult = hasInsultData(d);
+    const insults = sessions.map(s => s.insult_count || 0);
+    const countMax = Math.max(5, ...(showScream ? screams : []), ...(showInsult ? insults : []));
+    const countAxisColor = showScream ? '#5cf0d2' : '#ffc857';
+    const countAxisLabel = (showScream && showInsult) ? 'gritos / insultos' : (showScream ? 'gritos' : 'insultos');
 
     const datasets = [
         {
@@ -1578,6 +1666,22 @@ function renderTimelineChart(d) {
             yAxisID: 'y2',
         });
     }
+    if (showInsult) {
+        datasets.push({
+            label: 'Insultos',
+            data: insults,
+            borderColor: '#ffc857',
+            backgroundColor: 'rgba(255,200,87,0.08)',
+            borderWidth: 1.5,
+            borderDash: [2, 4],
+            fill: false,
+            tension: 0.35,
+            pointRadius: 0,
+            pointHoverRadius: 5,
+            pointBackgroundColor: '#ffc857',
+            yAxisID: 'y2',
+        });
+    }
 
     if (timelineChart) timelineChart.destroy();
     const ctx = $('#chart-timeline').getContext('2d');
@@ -1594,14 +1698,14 @@ function renderTimelineChart(d) {
                     grid: { color: 'rgba(255,255,255,0.04)' },
                     ticks: { callback: v => v + '%' },
                 },
-                ...(showScream ? {
+                ...((showScream || showInsult) ? {
                     y2: {
                         position: 'right',
                         min: 0,
-                        suggestedMax: Math.max(5, ...screams),
+                        suggestedMax: countMax,
                         grid: { drawOnChartArea: false },
-                        ticks: { color: '#5cf0d2', precision: 0 },
-                        title: { display: true, text: 'gritos', color: '#5cf0d2', font: {size: 10} },
+                        ticks: { color: countAxisColor, precision: 0 },
+                        title: { display: true, text: countAxisLabel, color: countAxisColor, font: {size: 10} },
                     },
                 } : {}),
                 x: {
@@ -1702,8 +1806,8 @@ function renderDistributionChart(d) {
 // =========================================================================
 function renderHeatmap(d, metric = 'rage') {
     const days = ['LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB', 'DOM'];
-    // Cada celda acumula rage (suma %) y gritos (suma counts) + nº de sesiones.
-    const grid = Array.from({length: 7}, () => Array.from({length: 24}, () => ({rage: 0, scream: 0, count: 0})));
+    // Cada celda acumula rage (suma %) y gritos/insultos (suma counts) + nº de sesiones.
+    const grid = Array.from({length: 7}, () => Array.from({length: 24}, () => ({rage: 0, scream: 0, insult: 0, count: 0})));
 
     for (const s of d.sessions) {
         const dt = new Date(s.date.replace(' ', 'T'));
@@ -1712,15 +1816,21 @@ function renderHeatmap(d, metric = 'rage') {
         const hour = dt.getHours();
         grid[dayIdx][hour].rage += s.angry_percentage;
         grid[dayIdx][hour].scream += (s.scream_count || 0);
+        grid[dayIdx][hour].insult += (s.insult_count || 0);
         grid[dayIdx][hour].count++;
     }
 
-    // Para gritos necesitamos el máximo para normalizar el color.
-    let maxScream = 0;
-    for (const row of grid) for (const c of row) if (c.scream > maxScream) maxScream = c.scream;
+    // Máximos para normalizar el color de conteos.
+    let maxScream = 0, maxInsult = 0;
+    for (const row of grid) for (const c of row) {
+        if (c.scream > maxScream) maxScream = c.scream;
+        if (c.insult > maxInsult) maxInsult = c.insult;
+    }
     maxScream = Math.max(maxScream, 1);
+    maxInsult = Math.max(maxInsult, 1);
 
     const isScream = metric === 'scream';
+    const isInsult = metric === 'insult';
     const isBoth = metric === 'both';
 
     // Cabecera de horas
@@ -1738,6 +1848,10 @@ function renderHeatmap(d, metric = 'rage') {
                 const t = Math.min(1, cell.scream / maxScream);
                 bg = cell.scream > 0 ? `rgba(92,240,210,${0.15 + t * 0.85})` : 'var(--surface-3)';
                 title = `${days[di]} ${String(hi).padStart(2,'0')}h · ${cell.scream} gritos · ${cell.count} sesión${cell.count === 1 ? '' : 'es'}`;
+            } else if (isInsult) {
+                const t = Math.min(1, cell.insult / maxInsult);
+                bg = cell.insult > 0 ? `rgba(255,200,87,${0.15 + t * 0.85})` : 'var(--surface-3)';
+                title = `${days[di]} ${String(hi).padStart(2,'0')}h · ${cell.insult} insultos · ${cell.count} sesión${cell.count === 1 ? '' : 'es'}`;
             } else if (isBoth) {
                 // Mezcla: rojo (rage) + cian (gritos) superpuestos
                 const tr = Math.min(1, (cell.rage / cell.count) / 100);
@@ -1755,8 +1869,8 @@ function renderHeatmap(d, metric = 'rage') {
         return `<div class="heat-day">${days[di]}</div>${cells}`;
     }).join('');
 
-    const scaleColor = isScream ? '92,240,210' : '255,82,96';
-    const legendLabel = isScream ? 'más gritos' : (isBoth ? 'rage + gritos' : '100% rage');
+    const scaleColor = isScream ? '92,240,210' : (isInsult ? '255,200,87' : '255,82,96');
+    const legendLabel = isScream ? 'más gritos' : (isInsult ? 'más insultos' : (isBoth ? 'rage + gritos' : '100% rage'));
     const legend = `
         <div class="heat-legend">
             <span>// ${isScream ? '0' : '0%'}</span>
@@ -1776,7 +1890,7 @@ function renderGamesTab(d) {
     const sessions = d.sessions;
     const byGame = {};
     for (const s of sessions) {
-        if (!byGame[s.game]) byGame[s.game] = {sessions: [], r: 0, h: 0, n: 0, peaks: 0, dur: 0};
+        if (!byGame[s.game]) byGame[s.game] = {sessions: [], r: 0, h: 0, n: 0, peaks: 0, dur: 0, screams: 0, insults: 0};
         const g = byGame[s.game];
         g.sessions.push(s);
         g.r += s.angry_count;
@@ -1784,6 +1898,8 @@ function renderGamesTab(d) {
         g.n += s.neutral_count;
         g.peaks += (s.peak_rage_count || 0);
         g.dur += s.duration_seconds;
+        g.screams += (s.scream_count || 0);
+        g.insults += (s.insult_count || 0);
     }
 
     // Anexar info de games.csv si la hay
@@ -1818,6 +1934,8 @@ function renderGamesTab(d) {
                     <div class="row"><span>Neutral</span><span class="v">${neutPct.toFixed(1)}%</span></div>
                     <div class="row"><span>Peaks</span><span class="v">${g.peaks}</span></div>
                     <div class="row"><span>Tiempo</span><span class="v">${fmtTimeShort(g.dur)}</span></div>
+                    ${g.screams > 0 ? `<div class="row"><span>Gritos</span><span class="v" style="color:var(--cyan)">${g.screams}</span></div>` : ''}
+                    ${g.insults > 0 ? `<div class="row"><span>Insultos</span><span class="v" style="color:var(--warn)">${g.insults}</span></div>` : ''}
                 </div>
             </div>
             <div class="gc-spark">
@@ -1875,6 +1993,8 @@ function drawMiniSparklineFull(values, color) {
 // LOG TAB
 // =========================================================================
 function renderLogTab(d) {
+    const showScreamCol = hasScreamData(d);
+    const showInsultCol = hasInsultData(d);
     const games = Array.from(new Set(d.sessions.map(s => s.game)));
     const filterRow = $('#filter-row');
     filterRow.innerHTML = `<span class="label">// Filtrar:</span><button class="chip ${STATE.logFilter === 'all' ? 'active' : ''}" data-filter="all">Todas</button>` +
@@ -1909,10 +2029,13 @@ function renderLogTab(d) {
             </td>
             <td>${s.peak_rage_count || 0}</td>
             <td><span class="badge ${s.emotional_trend}">${s.emotional_trend}</span></td>
+            ${showScreamCol ? `<td style="color:var(--cyan)">${s.scream_count || 0}</td>` : ''}
+            ${showInsultCol ? `<td style="color:var(--warn)">${s.insult_count || 0}</td>` : ''}
         </tr>`;
     }).join('');
 
-    $('#log-tbody').innerHTML = rows || '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-4)">Sin sesiones para este filtro</td></tr>';
+    const colCount = 7 + (showScreamCol ? 1 : 0) + (showInsultCol ? 1 : 0);
+    $('#log-tbody').innerHTML = rows || `<tr><td colspan="${colCount}" style="text-align:center;padding:40px;color:var(--text-4)">Sin sesiones para este filtro</td></tr>`;
 }
 
 // =========================================================================
