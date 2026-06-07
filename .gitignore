@@ -41,3 +41,7 @@ opencode.json
 _nuevos_temp/
 
 micro_temp/
+
+# ===== Claude Code =====
+
+.claude/
