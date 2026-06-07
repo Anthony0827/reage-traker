@@ -195,7 +195,9 @@ def run_session(
     try:
         if want_emotions:
             detector = EmotionDetector(
-                game_name=game, test_mode=False, audio_monitor=monitor
+                game_name=game, test_mode=False,
+                audio_monitor=monitor,
+                insult_detector=insult_detector if want_insults else None,
             )
             summary = detector.run()
         else:

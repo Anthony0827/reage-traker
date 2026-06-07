@@ -70,6 +70,7 @@ class EmotionDetector:
         test_mode: bool = False,
         profile: Optional[CalibrationProfile] = None,
         audio_monitor: Optional[object] = None,
+        insult_detector: Optional[object] = None,
     ):
         self.game_name = game_name
         self.test_mode = test_mode
@@ -77,6 +78,7 @@ class EmotionDetector:
         # expone .level (0..100), .threshold_pct, .is_screaming y .get_summary().
         # Si es None, el comportamiento es idéntico al de la versión anterior.
         self.audio_monitor = audio_monitor
+        self.insult_detector = insult_detector
 
         # Cargar perfil de calibración (con fallback a defaults)
         self.profile = profile or CalibrationProfile.load() or CalibrationProfile()
@@ -219,7 +221,7 @@ class EmotionDetector:
         recent = [h["emotion"] for h in self.emotion_history[-10:]]
         trend = max(set(recent), key=recent.count) if recent else "neutral"
 
-        return {
+        summary = {
             "game": self.game_name,
             "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "duration_seconds": total_time,
@@ -234,15 +236,11 @@ class EmotionDetector:
             "emotional_trend": trend,
             "total_frames": self.total_frames,
         }
-
-        # Fase 3: si hubo monitor de micrófono, añado las métricas de grito.
-        # Son campos opcionales; data_manager los persiste como columnas extra.
         if self.audio_monitor is not None:
             try:
                 summary.update(self.audio_monitor.get_summary())
             except Exception:
                 pass
-
         return summary
 
     # =========================================================================
@@ -460,6 +458,10 @@ class EmotionDetector:
         if self.audio_monitor is not None:
             self._draw_mic_indicator(frame)
 
+        # 9. Contador de insultos (solo si hay detector activo)
+        if self.insult_detector is not None:
+            self._draw_insult_indicator(frame)
+
     def _draw_mic_indicator(self, frame: np.ndarray) -> None:
         """VU horizontal del micrófono en la esquina superior derecha.
 
@@ -508,3 +510,27 @@ class EmotionDetector:
         cv2.rectangle(frame, (bx, by), (bx + bw, by + bh), hud.COLOR_TEXT_DIM, 1)
         hud.draw_text(frame, f"{int(level):3d}%", (bx + bw - 40, by - 4), 0.4,
                       hud.COLOR_TEXT, 1)
+
+    def _draw_insult_indicator(self, frame: np.ndarray) -> None:
+        """Pastilla de insultos en la esquina superior derecha (bajo el indicador de mic)."""
+        idet = self.insult_detector
+        try:
+            summary = idet.get_summary()
+            count = int(summary.get("insult_count", 0))
+        except Exception:
+            return
+
+        h, w = frame.shape[:2]
+        pw, ph = 250, 36
+        # Posición: bajo el indicador de micrófono (y=52+60=112) si existe, si no, y=52
+        y_offset = 52 + (60 + 6 if self.audio_monitor is not None else 0)
+        x = w - pw - 14
+        y = y_offset + 4
+
+        active = count > 0
+        border = hud.COLOR_ANGRY if active else hud.COLOR_TEXT_DIM
+        hud.draw_panel(frame, x, y, pw, ph, alpha=0.72, border_color=border)
+        hud.draw_text(frame, "INSULTOS", (x + 12, y + 14), 0.42, hud.COLOR_TEXT_DIM, 1)
+        count_color = hud.COLOR_ANGRY if active else hud.COLOR_TEXT_DIM
+        hud.draw_text(frame, f"x{count}", (x + pw - 52, y + 14), 0.5,
+                      count_color, 1, shadow=active)

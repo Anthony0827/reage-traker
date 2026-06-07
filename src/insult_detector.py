@@ -7,9 +7,11 @@ speech-to-text and a custom Spanish stemmer for lexicon matching.
 Privacy: No transcript text is ever displayed to the user.
 """
 
+import json
 import os
 import csv
 import re
+import time
 import vosk
 import sounddevice as sd
 from typing import Optional, List, Dict, Any
@@ -103,6 +105,7 @@ class InsultDetector:
         self._recognizer = None
         self._lexicon_stems: set = set()
         self._model_name: str = ""
+        self._last_detected: Dict[str, float] = {}  # stem → timestamp, para debounce
         
         # Determine model path
         if model_path is None:
@@ -133,46 +136,44 @@ class InsultDetector:
             print(f"Warning: Could not load lexicon: {e}")
             return False
     
-    def _callback(self, indata: bytes, frames: int, time, status):
+    def _callback(self, indata, frames: int, time_info, status):
         """
-        Audio callback for real-time processing.
-        
-        Args:
-            indata: Audio data (int16, mono, 16kHz)
-            frames: Number of audio frames
-            time: Current time
-            status: Status flag
+        Audio callback para procesamiento en tiempo real.
+
+        indata: array numpy int16 de sounddevice (NO bytes).
+        Vosk espera bytes PCM16 mono 16kHz → hay que convertir.
+        Solo procesamos resultados FINALES para evitar doble conteo.
+        Debounce: mínimo 2 s entre detecciones del mismo stem.
         """
         if not self._recognizer:
             return
-        
-        # Feed audio to Vosk recognizer
-        recognizer_result = self._recognizer.process(indata)
-        
-        if not recognizer_result:
-            return
-        
-        # Get partial or final result
-        if self._recognizer.get_partially_complete() or not indata:
-            transcript = self._recognizer.result()
-            
-            # Tokenize and process
-            tokens = transcript.split()
-            
-            # Process each token
-            for token in tokens:
-                # Strip punctuation
-                clean_token = re.sub(r'[^\w\s]', '', token).lower().strip()
-                
-                if clean_token:
-                    # Stem the token
-                    stemmed = SpanishStemmer.stem(clean_token)
-                    
-                    # Check lexicon match
-                    if stemmed in self._lexicon_stems:
-                        self._insult_count += 1
-                        if self._insult_count > self._insult_peak_count:
-                            self._insult_peak_count = self._insult_count
+
+        # Convertir numpy int16 → bytes PCM que acepta Vosk
+        audio_bytes = indata.flatten().tobytes()
+
+        if self._recognizer.AcceptWaveform(audio_bytes):
+            result = json.loads(self._recognizer.Result())
+            text = result.get("text", "")
+            if text:
+                self._process_text(text)
+
+    def _process_text(self, text: str) -> None:
+        """Tokeniza, stemiza y compara contra el léxico con debounce."""
+        now = time.time()
+        for token in text.split():
+            clean = re.sub(r'[^\w]', '', token).lower().strip()
+            if not clean:
+                continue
+            stemmed = SpanishStemmer.stem(clean)
+            if stemmed not in self._lexicon_stems:
+                continue
+            # Debounce: ignorar el mismo stem si fue detectado hace < 2 s
+            if now - self._last_detected.get(stemmed, 0) < 2.0:
+                continue
+            self._last_detected[stemmed] = now
+            self._insult_count += 1
+            if self._insult_count > self._insult_peak_count:
+                self._insult_peak_count = self._insult_count
     
     def start(self) -> bool:
         """
@@ -193,30 +194,25 @@ class InsultDetector:
             self._model_path = os.environ.get("RAGE_VOSK_MODEL", self._model_path)
             self._model_name = os.path.basename(self._model_path)
             
-            # Load Vosk model
+            # Cargar modelo Vosk (el idioma ya está integrado en el modelo)
             model = vosk.Model(self._model_path)
-            
-            # Initialize recognizer
+
+            # KaldiRecognizer a 16kHz — no existe SetLanguage, el modelo ya es español
             self._recognizer = vosk.KaldiRecognizer(model, 16000)
-            self._recognizer.SetLanguage("es")
-            
-            # Load lexicon
-            lexicon_path = os.path.join(os.path.dirname(__file__), 
-                                       '..', 'data', 'insultos.csv')
+
+            # Cargar léxico
+            lexicon_path = os.path.join(os.path.dirname(__file__),
+                                        '..', 'data', 'insultos.csv')
             if not self._load_lexicon(lexicon_path):
                 self.last_error = "lexicon not found"
                 return False
-            
-            # Create audio stream with callback
-            def callback(indata, frames, time, status):
-                if not status:
-                    self._callback(indata, frames, time, status)
-            
+
+            # Stream de audio: sounddevice llama al callback con arrays numpy
             self._stream = sd.InputStream(
                 samplerate=16000,
                 channels=1,
                 dtype='int16',
-                callback=callback
+                callback=self._callback,
             )
             
             self._stream.start()
@@ -252,14 +248,10 @@ class InsultDetector:
         self.is_insult_active = False
     
     def reset(self):
-        """
-        Reset counters without closing stream.
-        
-        Zeros insult_count and insult_peak_count while keeping
-        the audio stream active.
-        """
+        """Resetea contadores sin cerrar el stream. También limpia el debounce cache."""
         self._insult_count = 0
         self._insult_peak_count = 0
+        self._last_detected.clear()
     
     def get_summary(self) -> Dict[str, Any]:
         """

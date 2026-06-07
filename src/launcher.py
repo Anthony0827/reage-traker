@@ -174,8 +174,7 @@ def _mk_slider(parent, from_, to, variable, command=None):
 
 
 def _mk_canvas(parent, width, height, bg=SURFACE2):
-    if _ctk():
-        return _CTK.CTkCanvas(parent, width=width, height=height, bg=bg, highlightthickness=0)
+    # CTkCanvas no existe en CustomTkinter; siempre usamos tk.Canvas directamente
     return _TK.Canvas(parent, width=width, height=height, bg=bg, highlightthickness=0, bd=0)
 
 
@@ -455,6 +454,7 @@ class RageTrackerApp:
 
         self._toggle_mic_button()  # estado inicial coherente
         self._toggle_calib_button()  # estado inicial coherente
+        self._toggle_insult_button()  # estado inicial coherente
 
     def _toggle_mic_button(self):
         want = bool(self.scream_var.get())
@@ -1098,6 +1098,65 @@ class RageTrackerApp:
             pass
         self.root.withdraw()
         self._run_subprocess(cmd)
+
+    def _open_calibration(self):
+        """Calibración de cara: misma ruta que el botón Recalibrar."""
+        self._on_recalibrate()
+
+    def _on_thr_change(self):
+        """Actualiza cualquier UI que muestre el umbral (no-op: el valor ya está en self.thr_var)."""
+        pass
+
+    def _open_insult_config(self):
+        """Ventana de información y configuración del detector de insultos."""
+        parent = self._config_win or self.root
+        win = _CTK.CTkToplevel(parent) if _ctk() else _TK.Toplevel(parent)
+        win.title("Configurar insultos")
+        win.configure(bg=BG)
+        win.geometry("480x340")
+        win.resizable(False, False)
+        win.transient(parent)
+        win.grab_set()
+
+        body = _mk_frame(win, fg=BG, corner=0)
+        body.pack(fill="both", expand=True, padx=22, pady=18)
+
+        _mk_label(body, "DETECTOR DE INSULTOS", (DISP, 22, "bold"), CYAN, bg=BG).pack(anchor="w")
+        _mk_label(body, "// deteccion de lenguaje ofensivo en espanol (Vosk STT)",
+                  (MONO, 10), TEXT3, bg=BG).pack(anchor="w", pady=(0, 14))
+
+        n = self._count_insults()
+        lexico = _mk_frame(body, fg=SURFACE, corner=10, border=1, border_color=BORDER)
+        lexico.pack(fill="x", pady=(0, 10))
+        _mk_label(lexico, "LEXICO", (MONO, 10, "bold"), TEXT2, bg=SURFACE).pack(
+            anchor="w", padx=16, pady=(12, 4))
+        _mk_label(lexico, f"data/insultos.csv  -  {n} entradas cargadas",
+                  (MONO, 11), CYAN, bg=SURFACE).pack(anchor="w", padx=16, pady=(0, 4))
+        _mk_label(lexico, "Edita ese CSV para ampliar o reducir el lexico.",
+                  (MONO, 10), TEXT3, bg=SURFACE).pack(anchor="w", padx=16, pady=(0, 12))
+
+        modelo = _mk_frame(body, fg=SURFACE, corner=10, border=1, border_color=BORDER)
+        modelo.pack(fill="x", pady=(0, 10))
+        _mk_label(modelo, "MODELO VOSK (STT)", (MONO, 10, "bold"), TEXT2, bg=SURFACE).pack(
+            anchor="w", padx=16, pady=(12, 4))
+        _mk_label(modelo, "models/vosk-es  -  descargalo si no esta instalado",
+                  (MONO, 11), CYAN, bg=SURFACE).pack(anchor="w", padx=16, pady=(0, 4))
+        _mk_label(modelo, "Var. entorno RAGE_VOSK_MODEL para ruta personalizada.",
+                  (MONO, 10), TEXT3, bg=SURFACE).pack(anchor="w", padx=16, pady=(0, 12))
+
+        _mk_button(body, "Cerrar", win.destroy,
+                   fg=SURFACE2, hover=SURFACE3, text_color=TEXT2,
+                   height=36, font=(MONO, 12)).pack(fill="x", pady=(4, 0))
+
+    def _count_insults(self) -> int:
+        """Cuenta entradas válidas en data/insultos.csv."""
+        try:
+            import csv as _csv
+            p = ROOT / "data" / "insultos.csv"
+            with open(p, "r", encoding="utf-8") as f:
+                return sum(1 for r in _csv.reader(f) if r and r[0].strip())
+        except Exception:
+            return 0
 
     def _run_subprocess(self, cmd):
         def worker():
