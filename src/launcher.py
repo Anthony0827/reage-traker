@@ -446,7 +446,7 @@ class RageTrackerApp:
         # ---- C) Botones ----
         actions = _mk_frame(body, fg=BG, corner=0)
         actions.pack(fill="x", side="bottom", pady=(10, 0))
-        _mk_button(actions, "▶  INICIAR SENSOR", self._on_start_session,
+        _mk_button(actions, "▶  INICIAR RAGE TRACKER", self._on_start_session,
                    height=46, font=(MONO, 14, "bold")).pack(fill="x")
         _mk_button(actions, "⚙  Recalibrar detección", self._on_recalibrate,
                    fg=SURFACE2, hover=SURFACE3, text_color=TEXT2,

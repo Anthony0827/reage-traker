@@ -43,9 +43,6 @@ try:
 except Exception:  # pragma: no cover
     InsultDetector = None  # type: ignore
 
-    def audio_available() -> bool:  # type: ignore
-        return False
-
 
 # Cuántos "momentos de enfado" suma cada grito confirmado. 1.0 = un grito
 # equivale a una detección de cara enfadada. Súbelo si quieres que los gritos
