@@ -178,6 +178,40 @@ def _mk_canvas(parent, width, height, bg=SURFACE2):
     return _TK.Canvas(parent, width=width, height=height, bg=bg, highlightthickness=0, bd=0)
 
 
+def _mk_scrollable(parent, fg=BG):
+    """Devuelve (contenedor, interior): mete los widgets en `interior` y empaqueta
+    `contenedor`. El contenido hace scroll vertical si no cabe en la ventana.
+
+    Con CustomTkinter uso CTkScrollableFrame. En tkinter estándar monto un
+    Canvas + Scrollbar a mano (con rueda del ratón) para lograr el mismo efecto.
+    Esto evita que las ventanas con mucho contenido (p. ej. sesión con los tres
+    sensores) recorten botones en pantallas pequeñas."""
+    if _ctk():
+        sf = _CTK.CTkScrollableFrame(parent, fg_color=fg, corner_radius=0)
+        return sf, sf
+
+    outer = _TK.Frame(parent, bg=fg, bd=0, highlightthickness=0)
+    canvas = _TK.Canvas(outer, bg=fg, bd=0, highlightthickness=0)
+    vsb = _TK.Scrollbar(outer, orient="vertical", command=canvas.yview)
+    inner = _TK.Frame(canvas, bg=fg, bd=0, highlightthickness=0)
+    win_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+
+    inner.bind("<Configure>",
+               lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+    canvas.bind("<Configure>",
+                lambda e: canvas.itemconfigure(win_id, width=e.width))
+    canvas.configure(yscrollcommand=vsb.set)
+    vsb.pack(side="right", fill="y")
+    canvas.pack(side="left", fill="both", expand=True)
+
+    def _wheel(e):
+        canvas.yview_scroll(int(-e.delta / 120), "units")
+
+    inner.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _wheel))
+    inner.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+    return outer, inner
+
+
 def _str_var(value=""):
     return _TK.StringVar(value=value)
 
@@ -372,7 +406,11 @@ class RageTrackerApp:
         win = _CTK.CTkToplevel(self.root) if _ctk() else _TK.Toplevel(self.root)
         win.title("Configurar sesión")
         win.configure(bg=BG)
-        win.geometry("520x680")
+        # El contenido va en un área scrollable, así que un alto moderado basta:
+        # si con los tres sensores no entra todo, el usuario hace scroll en vez
+        # de encontrarse botones recortados.
+        win.geometry("520x700")
+        win.minsize(480, 520)
         self._config_win = win
 
         def on_close():
@@ -384,8 +422,19 @@ class RageTrackerApp:
 
         win.protocol("WM_DELETE_WINDOW", on_close)
 
-        body = _mk_frame(win, fg=BG, corner=0)
-        body.pack(fill="both", expand=True, padx=22, pady=18)
+        # Barra de acciones FIJA abajo: siempre visible, fuera del scroll, para
+        # que INICIAR nunca quede recortado por mucho contenido que haya arriba.
+        actions = _mk_frame(win, fg=BG, corner=0)
+        actions.pack(fill="x", side="bottom", padx=22, pady=(8, 16))
+        _mk_button(actions, "▶  INICIAR RAGE TRACKER", self._on_start_session,
+                   height=46, font=(MONO, 14, "bold")).pack(fill="x")
+        _mk_button(actions, "⚙  Recalibrar detección", self._on_recalibrate,
+                   fg=SURFACE2, hover=SURFACE3, text_color=TEXT2,
+                   height=34, font=(MONO, 11)).pack(fill="x", pady=(8, 0))
+
+        # Contenido scrollable (todo lo demás).
+        scroll, body = _mk_scrollable(win, fg=BG)
+        scroll.pack(fill="both", expand=True, padx=22, pady=(18, 0))
 
         _mk_label(body, "CONFIGURAR SESIÓN", (DISP, 22, "bold"), CYAN, bg=BG).pack(anchor="w")
         _mk_label(body, "// elige juego y sensores antes de empezar",
@@ -442,15 +491,6 @@ class RageTrackerApp:
         _mk_button(self.insult_btn_frame, "🎯  CONFIGURAR INSULTOS",
                    self._open_insult_config, fg=SURFACE2, hover=SURFACE3, text_color=CYAN,
                    height=42, font=(MONO, 13, "bold")).pack(fill="x")
-
-        # ---- C) Botones ----
-        actions = _mk_frame(body, fg=BG, corner=0)
-        actions.pack(fill="x", side="bottom", pady=(10, 0))
-        _mk_button(actions, "▶  INICIAR RAGE TRACKER", self._on_start_session,
-                   height=46, font=(MONO, 14, "bold")).pack(fill="x")
-        _mk_button(actions, "⚙  Recalibrar detección", self._on_recalibrate,
-                   fg=SURFACE2, hover=SURFACE3, text_color=TEXT2,
-                   height=34, font=(MONO, 11)).pack(fill="x", pady=(8, 0))
 
         self._toggle_mic_button()  # estado inicial coherente
         self._toggle_calib_button()  # estado inicial coherente
@@ -647,13 +687,28 @@ class RageTrackerApp:
         _mk_label(vu_frame, "↕  arrastrá la línea cyan para ajustar el umbral",
                   (MONO, 9), TEXT3, bg=SURFACE).pack(anchor="w", padx=16, pady=(0, 10))
 
+        # ---- Callbacks de sliders (definidos antes de los sliders) ----
+        def _on_thr(val):
+            v = float(val)
+            thr_val_label.configure(
+                text=f"{int(v)}% — cuanto más alto, más fuerte hay que gritar")
+            if mic_monitor is not None:
+                mic_monitor.threshold_pct = v
+
+        def _on_sens(val):
+            v = float(val)
+            sens_val_label.configure(
+                text=f"{v:.1f}x — subilo si tu micro es flojo y la barra no se mueve")
+            if mic_monitor is not None:
+                mic_monitor.sensitivity = v
+
         # ---- Umbral ----
         thr_frame = _mk_frame(body, fg=SURFACE, corner=10, border=1, border_color=BORDER)
         thr_frame.pack(fill="x", pady=(0, 12))
         thr_label = _mk_label(thr_frame, "UMBRAL DE GRITO", (MONO, 10, "bold"), TEXT2, bg=SURFACE)
         thr_label.pack(anchor="w", padx=16, pady=(12, 4))
         thr_var_local = _double_var(self.thr_var.get())
-        thr_slider = _mk_slider(thr_frame, 0, 100, thr_var_local)
+        thr_slider = _mk_slider(thr_frame, 0, 100, thr_var_local, command=_on_thr)
         thr_slider.pack(fill="x", padx=16, pady=(4, 4))
         thr_val_label = _mk_label(thr_frame, f"{int(thr_var_local.get())}% — "
                                   "cuanto más alto, más fuerte hay que gritar",
@@ -666,7 +721,7 @@ class RageTrackerApp:
         sens_label = _mk_label(sens_frame, "SENSIBILIDAD (ganancia)", (MONO, 10, "bold"), TEXT2, bg=SURFACE)
         sens_label.pack(anchor="w", padx=16, pady=(12, 4))
         sens_var_local = _double_var(self.sens_var.get())
-        sens_slider = _mk_slider(sens_frame, 0.5, 5.0, sens_var_local)
+        sens_slider = _mk_slider(sens_frame, 0.5, 5.0, sens_var_local, command=_on_sens)
         sens_slider.pack(fill="x", padx=16, pady=(4, 4))
         sens_val_label = _mk_label(sens_frame, f"{sens_var_local.get():.1f}x — "
                                    "subilo si tu micro es flojo y la barra no se mueve",
@@ -683,31 +738,6 @@ class RageTrackerApp:
                    lambda: (_save(), _stop(), on_close(), self._open_mic_calibration()),
                    fg=SURFACE2, hover=SURFACE3, text_color=CYAN,
                    height=34, font=(MONO, 10)).pack(side="left")
-
-        # ---- Callbacks de sliders ----
-        def _on_thr(val):
-            v = float(val)
-            thr_val_label.configure(
-                text=f"{int(v)}% — cuanto más alto, más fuerte hay que gritar")
-            if mic_monitor is not None:
-                mic_monitor.threshold_pct = v
-
-        def _on_sens(val):
-            v = float(val)
-            sens_val_label.configure(
-                text=f"{v:.1f}x — subilo si tu micro es flojo y la barra no se mueve")
-            if mic_monitor is not None:
-                mic_monitor.sensitivity = v
-
-        try:
-            if _ctk():
-                thr_slider.configure(command=_on_thr)
-                sens_slider.configure(command=_on_sens)
-            else:
-                thr_slider.configure(command=lambda v: _on_thr(float(v)))
-                sens_slider.configure(command=lambda v: _on_sens(float(v)))
-        except Exception:
-            pass
 
         def _save():
             self.mic_var.set(mic_var_local.get())
@@ -917,25 +947,16 @@ class RageTrackerApp:
                                (MONO, 9), TEXT3, bg=SURFACE)
         hint_label.pack(anchor="w", padx=16, pady=(0, 0))
 
-        thr_var_local = _double_var(calib_thr)
-        thr_slider = _mk_slider(ctrl_frame, 0, 100, thr_var_local)
-        thr_slider.pack(fill="x", padx=16, pady=(4, 12))
-
+        # ---- Callback del slider (definido antes del slider) ----
         def _on_thr_slider(val):
             nonlocal calib_thr
             calib_thr = float(val)
             thr_label.configure(text=f"Umbral de grito: {int(calib_thr)}%")
             calib_monitor.threshold_pct = calib_thr
 
-        # Conecto el slider. En CTk, el command recibe el valor como float.
-        # En tk estándar, el command de Scale recibe un string.
-        try:
-            if _ctk():
-                thr_slider.configure(command=_on_thr_slider)
-            else:
-                thr_slider.configure(command=lambda v: _on_thr_slider(float(v)))
-        except Exception:
-            pass
+        thr_var_local = _double_var(calib_thr)
+        thr_slider = _mk_slider(ctrl_frame, 0, 100, thr_var_local, command=_on_thr_slider)
+        thr_slider.pack(fill="x", padx=16, pady=(4, 12))
 
         # ---- Botones ----
         btn_frame = _mk_frame(body, fg=BG, corner=0)
@@ -1113,8 +1134,9 @@ class RageTrackerApp:
         win = _CTK.CTkToplevel(parent) if _ctk() else _TK.Toplevel(parent)
         win.title("Configurar insultos")
         win.configure(bg=BG)
-        win.geometry("480x340")
-        win.resizable(False, False)
+        win.geometry("500x580")
+        win.minsize(460, 480)
+        win.resizable(False, True)
         win.transient(parent)
         win.grab_set()
 
@@ -1122,31 +1144,39 @@ class RageTrackerApp:
         body.pack(fill="both", expand=True, padx=22, pady=18)
 
         _mk_label(body, "DETECTOR DE INSULTOS", (DISP, 22, "bold"), CYAN, bg=BG).pack(anchor="w")
-        _mk_label(body, "// deteccion de lenguaje ofensivo en espanol (Vosk STT)",
-                  (MONO, 10), TEXT3, bg=BG).pack(anchor="w", pady=(0, 14))
+        _mk_label(body, "// detección de lenguaje ofensivo en español (Vosk STT)",
+                  (MONO, 10), TEXT3, bg=BG).pack(anchor="w", pady=(0, 16))
 
+        # ---- Léxico ----
         n = self._count_insults()
         lexico = _mk_frame(body, fg=SURFACE, corner=10, border=1, border_color=BORDER)
-        lexico.pack(fill="x", pady=(0, 10))
-        _mk_label(lexico, "LEXICO", (MONO, 10, "bold"), TEXT2, bg=SURFACE).pack(
-            anchor="w", padx=16, pady=(12, 4))
-        _mk_label(lexico, f"data/insultos.csv  -  {n} entradas cargadas",
-                  (MONO, 11), CYAN, bg=SURFACE).pack(anchor="w", padx=16, pady=(0, 4))
-        _mk_label(lexico, "Edita ese CSV para ampliar o reducir el lexico.",
-                  (MONO, 10), TEXT3, bg=SURFACE).pack(anchor="w", padx=16, pady=(0, 12))
+        lexico.pack(fill="x", pady=(0, 12))
+        _mk_label(lexico, "LÉXICO", (MONO, 10, "bold"), TEXT2, bg=SURFACE).pack(
+            anchor="w", padx=16, pady=(14, 4))
+        _mk_label(lexico, f"data/insultos.csv  ·  {n} entradas cargadas",
+                  (MONO, 12, "bold"), CYAN, bg=SURFACE).pack(anchor="w", padx=16, pady=(0, 4))
+        _mk_label(lexico, "Edita ese CSV para ampliar o reducir el léxico.",
+                  (MONO, 10), TEXT3, bg=SURFACE).pack(anchor="w", padx=16, pady=(0, 14))
 
+        # ---- Modelo Vosk (con estado real) ----
         modelo = _mk_frame(body, fg=SURFACE, corner=10, border=1, border_color=BORDER)
-        modelo.pack(fill="x", pady=(0, 10))
+        modelo.pack(fill="x", pady=(0, 12))
         _mk_label(modelo, "MODELO VOSK (STT)", (MONO, 10, "bold"), TEXT2, bg=SURFACE).pack(
-            anchor="w", padx=16, pady=(12, 4))
-        _mk_label(modelo, "models/vosk-es  -  descargalo si no esta instalado",
-                  (MONO, 11), CYAN, bg=SURFACE).pack(anchor="w", padx=16, pady=(0, 4))
-        _mk_label(modelo, "Var. entorno RAGE_VOSK_MODEL para ruta personalizada.",
-                  (MONO, 10), TEXT3, bg=SURFACE).pack(anchor="w", padx=16, pady=(0, 12))
+            anchor="w", padx=16, pady=(14, 4))
+        status_text, status_color = self._vosk_model_status()
+        _mk_label(modelo, status_text, (MONO, 12, "bold"), status_color, bg=SURFACE).pack(
+            anchor="w", padx=16, pady=(0, 4))
+        _mk_label(modelo, "Variable de entorno RAGE_VOSK_MODEL para ruta personalizada.",
+                  (MONO, 10), TEXT3, bg=SURFACE).pack(anchor="w", padx=16, pady=(0, 14))
 
+        # ---- Nota de privacidad ----
+        _mk_label(body, "🔒  Ningún transcripto se muestra ni se guarda.",
+                  (MONO, 10), HAPPY, bg=BG).pack(anchor="w", pady=(0, 6))
+
+        # Botón anclado abajo: así nunca queda fuera del borde de la ventana.
         _mk_button(body, "Cerrar", win.destroy,
                    fg=SURFACE2, hover=SURFACE3, text_color=TEXT2,
-                   height=36, font=(MONO, 12)).pack(fill="x", pady=(4, 0))
+                   height=38, font=(MONO, 12)).pack(fill="x", side="bottom")
 
     def _count_insults(self) -> int:
         """Cuenta entradas válidas en data/insultos.csv."""
@@ -1157,6 +1187,23 @@ class RageTrackerApp:
                 return sum(1 for r in _csv.reader(f) if r and r[0].strip())
         except Exception:
             return 0
+
+    def _vosk_model_status(self):
+        """Devuelve (texto, color) según si el modelo Vosk está disponible.
+
+        Comprueba RAGE_VOSK_MODEL y, si no, la ruta por defecto models/vosk-es.
+        Da feedback claro al usuario en lugar de un texto fijo."""
+        import os
+        env = os.environ.get("RAGE_VOSK_MODEL")
+        candidate = Path(env) if env else (ROOT / "models" / "vosk-es")
+        try:
+            present = candidate.exists() and any(candidate.iterdir())
+        except Exception:
+            present = candidate.exists()
+        if present:
+            shown = env if env else "models/vosk-es"
+            return (f"{shown}  ·  modelo detectado ✓", HAPPY)
+        return ("models/vosk-es  ·  no encontrado (se descargará al usar)", WARN)
 
     def _run_subprocess(self, cmd):
         def worker():
