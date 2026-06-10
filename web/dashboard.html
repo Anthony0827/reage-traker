@@ -367,6 +367,61 @@
     .vital .sub.down  { color: var(--happy); }
 
     /* =========================================================================
+       KPI STRIP — métricas clave compactas (derivadas del CSV)
+       ========================================================================= */
+    .kpi-strip {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 14px;
+        margin-bottom: 20px;
+    }
+    .kpi {
+        background: linear-gradient(180deg, var(--surface), var(--surface-2));
+        border: 1px solid var(--border);
+        border-radius: var(--rad-md);
+        padding: 16px 18px 16px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        position: relative;
+        overflow: hidden;
+        transition: border-color 0.2s, transform 0.2s;
+    }
+    .kpi:hover { border-color: var(--cyan-dim); transform: translateY(-2px); }
+    .kpi::before {
+        content: '';
+        position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+        background: var(--accent, var(--cyan));
+    }
+    .kpi .k-label {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        color: var(--text-3);
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+    }
+    .kpi .k-value {
+        font-family: var(--font-display);
+        font-weight: 800;
+        font-size: 34px;
+        line-height: 1;
+        color: var(--text);
+        letter-spacing: -0.5px;
+        font-feature-settings: 'tnum';
+    }
+    .kpi .k-value .u {
+        font-size: 14px;
+        color: var(--text-3);
+        margin-left: 3px;
+        font-weight: 700;
+    }
+    .kpi .k-sub {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        color: var(--text-3);
+    }
+
+    /* =========================================================================
        INSIGHTS — observaciones generadas automáticamente
        ========================================================================= */
     .insights {
@@ -924,9 +979,17 @@
             </div>
         </div>
 
-        <!-- INSIGHTS -->
+        <!-- MÉTRICAS CLAVE -->
         <div class="section-head">
             <span class="num">01</span>
+            <h2>Métricas clave</h2>
+            <div class="rule"></div>
+        </div>
+        <div class="kpi-strip stagger" id="kpi-strip"></div>
+
+        <!-- INSIGHTS -->
+        <div class="section-head">
+            <span class="num">02</span>
             <h2>Insights</h2>
             <div class="rule"></div>
         </div>
@@ -934,7 +997,7 @@
 
         <!-- LEADERBOARD -->
         <div class="section-head">
-            <span class="num">02</span>
+            <span class="num">03</span>
             <h2>Rage Leaderboard</h2>
             <div class="rule"></div>
         </div>
@@ -992,9 +1055,18 @@
             </div>
         </div>
 
+        <!-- RAGE POR DÍA DE LA SEMANA -->
+        <div class="panel">
+            <div class="panel-title">
+                <h3>Rage medio por día de la semana</h3>
+                <span class="note">Promedio · todas las sesiones</span>
+            </div>
+            <div style="height:260px;"><canvas id="chart-weekday"></canvas></div>
+        </div>
+
         <!-- HEATMAP -->
         <div class="section-head">
-            <span class="num">03</span>
+            <span class="num">04</span>
             <h2>Cuándo rageas</h2>
             <div class="rule"></div>
         </div>
@@ -1134,6 +1206,7 @@ function animateNumber(el, target, duration = 900, suffix = '') {
 // =========================================================================
 // CARGA DE DATOS
 // =========================================================================
+let _lastSig = null;
 async function loadData() {
     try {
         const res = await fetch('/api/data');
@@ -1141,6 +1214,14 @@ async function loadData() {
         const data = await res.json();
         STATE.raw = data;
         $('#last-update').textContent = `// updated ${new Date().toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit', second:'2-digit'})}`;
+        // Restaura el indicador de conexión si venía de un error previo.
+        $('#conn-status').textContent = 'SYS_ONLINE';
+        $('#conn-status').style.color = '';
+        // Solo re-renderiza si los datos cambiaron (evita el parpadeo cada 15s
+        // que recreaba todos los gráficos y reiniciaba las animaciones).
+        const sig = JSON.stringify({ s: data.sessions, g: data.games });
+        if (sig === _lastSig) return;
+        _lastSig = sig;
         render();
     } catch (err) {
         console.error(err);
@@ -1158,10 +1239,12 @@ function render() {
         return;
     }
     renderHero(d);
+    renderKpiStrip(d);
     renderInsights(d);
     renderLeaderboard(d);
     renderTimelineChart(d);
     renderDistributionChart(d);
+    renderWeekdayChart(d);
     renderHeatmap(d, STATE.heatMetric);
     renderGamesTab(d);
     renderLogTab(d);
@@ -1305,6 +1388,61 @@ function generateTagline(ragePct, sessionCount) {
 }
 
 // =========================================================================
+// KPI STRIP — métricas clave derivadas del CSV
+// =========================================================================
+function renderKpiStrip(d) {
+    const s = d.sessions;
+    const n = s.length;
+    const totalSec   = s.reduce((a, x) => a + x.duration_seconds, 0);
+    const totalHrs   = totalSec / 3600;
+    const totalPeaks = s.reduce((a, x) => a + (x.peak_rage_count || 0), 0);
+    const totalHappy = s.reduce((a, x) => a + x.happy_count, 0);
+    const totalRage  = s.reduce((a, x) => a + x.angry_count, 0);
+    const balance    = (totalHappy + totalRage) > 0 ? totalHappy / (totalHappy + totalRage) * 100 : 0;
+    const bestStreak = s.reduce((a, x) => Math.max(a, x.happiness_streaks || 0), 0);
+    const avgDur     = n ? totalSec / n : 0;
+    const intensity  = totalHrs > 0 ? totalPeaks / totalHrs : 0;
+
+    const cards = [];
+    cards.push({ label: 'Sesión media', value: fmtTimeShort(Math.round(avgDur)),
+                 accent: 'var(--cyan)', sub: `// media de ${n} sesion${n === 1 ? '' : 'es'}` });
+    cards.push({ label: 'Intensidad', value: intensity.toFixed(1), unit: '/h',
+                 accent: 'var(--rage)', sub: '// picos de rage por hora' });
+    cards.push({ label: 'Balance H/R', value: Math.round(balance), unit: '%',
+                 accent: balance >= 50 ? 'var(--happy)' : 'var(--rage)',
+                 sub: '// momentos felices vs rage' });
+    cards.push({ label: 'Mejor racha feliz', value: bestStreak,
+                 accent: 'var(--happy)', sub: '// rachas en una sesión' });
+
+    if (hasScreamData(d)) {
+        const totalScreams = s.reduce((a, x) => a + (x.scream_count || 0), 0);
+        const screamsH = totalHrs > 0 ? totalScreams / totalHrs : 0;
+        cards.push({ label: 'Gritos / hora', value: screamsH.toFixed(1),
+                     accent: 'var(--cyan)', sub: '// frecuencia de gritos' });
+        // scream_peak_db es dBFS (negativo): el más cercano a 0 es el más fuerte.
+        const louds = s.filter(x => (x.scream_count || 0) > 0)
+                       .map(x => x.scream_peak_db).filter(v => v < 0);
+        if (louds.length) {
+            cards.push({ label: 'Grito más fuerte', value: Math.max(...louds).toFixed(1), unit: 'dB',
+                         accent: 'var(--warn)', sub: '// pico de volumen registrado' });
+        }
+    }
+    if (hasInsultData(d)) {
+        const totalInsults = s.reduce((a, x) => a + (x.insult_count || 0), 0);
+        const insultsH = totalHrs > 0 ? totalInsults / totalHrs : 0;
+        cards.push({ label: 'Insultos / hora', value: insultsH.toFixed(1),
+                     accent: 'var(--warn)', sub: '// frecuencia de insultos' });
+    }
+
+    $('#kpi-strip').innerHTML = cards.map(c => `
+        <div class="kpi" style="--accent:${c.accent}">
+            <span class="k-label">// ${c.label}</span>
+            <span class="k-value">${c.value}${c.unit ? `<span class="u">${c.unit}</span>` : ''}</span>
+            <span class="k-sub">${c.sub}</span>
+        </div>`).join('');
+}
+
+// =========================================================================
 // SPARKLINE SVG CUSTOM (sin librería)
 // =========================================================================
 function drawSparkline(selector, values) {
@@ -1435,6 +1573,34 @@ function renderInsights(d) {
             html: `Entre las <strong>${hrLabel}</strong> tu rage medio es <span class="num">${worstAvg.toFixed(0)}%</span>. ${worstHour >= 22 || worstHour < 4 ? 'Quizá deberías dormir.' : ''}`,
             cls: 'is-warning',
         });
+    }
+
+    // 4b. Día de la semana más tóxico (requiere algo de historial)
+    if (sessions.length >= 5) {
+        const dayNames = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+        const daySum = new Array(7).fill(0);
+        const dayCnt = new Array(7).fill(0);
+        for (const s of sessions) {
+            const dt = new Date(s.date.replace(' ', 'T'));
+            if (isNaN(dt)) continue;
+            const di = (dt.getDay() + 6) % 7;
+            daySum[di] += s.angry_percentage;
+            dayCnt[di]++;
+        }
+        let worstDay = -1, worstDayAvg = 0;
+        for (let i = 0; i < 7; i++) {
+            if (dayCnt[i] >= 2) {
+                const avg = daySum[i] / dayCnt[i];
+                if (avg > worstDayAvg) { worstDayAvg = avg; worstDay = i; }
+            }
+        }
+        if (worstDay >= 0 && worstDayAvg > 40) {
+            insights.push({
+                tag: 'Día más intenso',
+                html: `Los <strong>${dayNames[worstDay]}</strong> concentran tu mayor rage: <span class="num">${worstDayAvg.toFixed(0)}%</span> de media en ${dayCnt[worstDay]} sesiones.`,
+                cls: 'is-warning',
+            });
+        }
     }
 
     // 5. Racha actual
@@ -1600,7 +1766,7 @@ function renderInsultLeaderboard(d) {
 // =========================================================================
 // TIMELINE CHART (Chart.js)
 // =========================================================================
-let timelineChart, distributionChart;
+let timelineChart, distributionChart, weekdayChart;
 
 function renderTimelineChart(d) {
     if (typeof Chart === 'undefined') {
@@ -1793,6 +1959,79 @@ function renderDistributionChart(d) {
                             const total = totals.rage + totals.happy + totals.neutral;
                             const pct = total > 0 ? (item.parsed / total * 100).toFixed(1) : 0;
                             return ` ${item.label}: ${item.parsed} (${pct}%)`;
+                        },
+                    },
+                },
+            },
+        },
+    });
+}
+
+// =========================================================================
+// WEEKDAY BAR CHART — rage medio por día de la semana
+// =========================================================================
+function renderWeekdayChart(d) {
+    if (typeof Chart === 'undefined') {
+        const el = document.getElementById('chart-weekday');
+        if (el && el.parentElement) {
+            el.parentElement.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text-3);font-family:var(--font-mono);font-size:11px">// Chart.js no disponible</div>';
+        }
+        return;
+    }
+    const days = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+    const sum = new Array(7).fill(0);
+    const cnt = new Array(7).fill(0);
+    for (const s of d.sessions) {
+        const dt = new Date(s.date.replace(' ', 'T'));
+        if (isNaN(dt)) continue;
+        const di = (dt.getDay() + 6) % 7;  // lun = 0
+        sum[di] += s.angry_percentage;
+        cnt[di]++;
+    }
+    const avg = sum.map((v, i) => (cnt[i] ? v / cnt[i] : 0));
+    // Color por intensidad: a más rage medio, más saturado el rojo.
+    const colors = avg.map(v => `rgba(255,82,96,${0.30 + Math.min(1, v / 100) * 0.65})`);
+
+    if (weekdayChart) weekdayChart.destroy();
+    const ctx = $('#chart-weekday').getContext('2d');
+    weekdayChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: days,
+            datasets: [{
+                label: 'Rage medio %',
+                data: avg.map(v => +v.toFixed(1)),
+                backgroundColor: colors,
+                borderColor: '#ff5260',
+                borderWidth: 1,
+                borderRadius: 6,
+                maxBarThickness: 56,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    min: 0, max: 100,
+                    grid: { color: 'rgba(255,255,255,0.04)' },
+                    ticks: { callback: v => v + '%' },
+                },
+                x: { grid: { display: false } },
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#11161f',
+                    borderColor: '#232b3b',
+                    borderWidth: 1,
+                    titleColor: '#e8ecf3',
+                    bodyColor: '#a4adc1',
+                    padding: 10,
+                    callbacks: {
+                        label: (it) => {
+                            const c = cnt[it.dataIndex];
+                            return ` ${it.parsed.y}% rage · ${c} sesión${c === 1 ? '' : 'es'}`;
                         },
                     },
                 },
