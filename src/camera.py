@@ -9,13 +9,25 @@ Cambios principales respecto a la versión original:
 3. Modo test (test_mode=True): habilita todo el HUD pero NO genera resumen
    para CSV (el caller debe respetar esta semántica).
 4. Hotkeys ampliados:  [Q] terminar  [R] reiniciar  [P] pausa  [C] recalibrar
-5. Métricas en tiempo real:
-   - FPS de procesamiento
-   - Sparkline rodante de los últimos ~30s
-   - Pills de calidad (luz, distancia, detección)
-6. Filosofía de detección sin cambios (sonrisa = feliz, no sonrisa = enfadado).
+5. Métricas en tiempo real: FPS, sparkline, pills de calidad.
+6. Detección BINARIA (v3): sonrisa = feliz, cara frontal sin sonrisa = enfadado.
+   "neutral" deja de medirse/contarse: solo es un estado visual de "medición no
+   fiable" (cara girada/tapada). Adiós a los cruces neutral↔enfado.
 7. Fase 3: soporte opcional de micrófono vía audio_monitor (duck-typing).
-   Añade VU meter en el HUD y fusiona métricas de gritos en el summary.
+
+PIPELINE v2 — robustez para cualquier cara (este refactor):
+- Detección de cara vía FaceFinder compartido con la calibración:
+  CLAHE global + cascade principal con fallback alt2 + minSize relativo al
+  frame + selección de la cara más grande + suavizado del box + periodo de
+  gracia ante pérdidas breves del detector.
+- Análisis de emoción sobre la ROI facial CANÓNICA (tamaño fijo + CLAHE
+  local): los umbrales calibrados valen a cualquier distancia y resolución.
+- La sonrisa se busca SOLO en la región de la boca (adiós a los falsos
+  positivos del cascade de sonrisa sobre ojos/nariz, clave con barba/gafas).
+- Votación temporal de sonrisa (ventana deslizante): la confianza refleja
+  evidencia real, no un único frame con suerte.
+- Chequeo de ojos con doble cascade (ojo normal + ojo con gafas): llevar
+  gafas ya no degenera en falsos "angry".
 """
 
 from __future__ import annotations
@@ -32,9 +44,14 @@ from src import hud
 from src.calibration import (
     CalibrationProfile,
     Calibrator,
+    FaceFinder,
+    EYE_REGION_BOTTOM,
+    PIPELINE_VERSION,
     assess_lighting,
     assess_distance,
     assess_detection,
+    detect_smile_hits,
+    extract_face_roi,
 )
 
 
@@ -80,23 +97,34 @@ class EmotionDetector:
         self.audio_monitor = audio_monitor
         self.insult_detector = insult_detector
 
-        # Cargar perfil de calibración (con fallback a defaults)
+        # Cargar perfil de calibración (con fallback a defaults).
+        # CalibrationProfile.load() ya gestiona perfiles de pipelines antiguos
+        # (los neutraliza a defaults y avisa para recalibrar).
         self.profile = profile or CalibrationProfile.load() or CalibrationProfile()
         self.config = dict(self.profile.thresholds)
 
-        # Clasificadores Haar
-        self.face_cascade = cv2.CascadeClassifier(
-            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-        )
+        # Pipeline de cara compartido con la calibración (misma matemática
+        # exacta: si calibras y luego juegas, los parámetros encajan).
+        self.finder = FaceFinder()
+
+        # Clasificadores Haar de rasgos (la cara la lleva FaceFinder)
         self.smile_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_smile.xml"
         )
         self.eye_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_eye.xml"
         )
+        # Cascade específico para ojos con gafas: evita que un usuario con
+        # gafas caiga sistemáticamente en neutral→angry por "no ver ojos".
+        self.eye_glasses_cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_eye_tree_eyeglasses.xml"
+        )
 
-        # Estado de detección
-        self.emotion_counts = {"neutral": 0, "happy": 0, "angry": 0}
+        # Estado de detección.
+        # MODO BINARIO (v3): solo medimos FELIZ y ENFADADO. "neutral" ya no es
+        # una emoción medible; se usa únicamente como estado VISUAL de "midiendo
+        # / cara no fiable" y nunca se cuenta (evita los cruces neutral↔enfado).
+        self.emotion_counts = {"happy": 0, "angry": 0}
         self.emotion_history = []      # historial detallado para CSV
         self.peak_rage_moments = []
         self.happiness_streaks = []
@@ -112,6 +140,10 @@ class EmotionDetector:
         self.emotion_counter = 0
         self.frame_count = 0
         self.total_frames = 0
+
+        # Ventana de votación de sonrisa (1 = hubo sonrisa en ese frame).
+        window_len = max(3, int(self.config.get("smile_window_frames", 9)))
+        self._smile_window: deque = deque(maxlen=window_len)
 
         # Métricas en vivo
         self._fps_window = deque(maxlen=30)
@@ -160,16 +192,24 @@ class EmotionDetector:
                 self.total_frames += 1
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-                # Detección de cara
-                faces = self.face_cascade.detectMultiScale(
-                    gray, scaleFactor=1.3, minNeighbors=5, minSize=(100, 100)
-                )
-                self._detection_window.append(1 if len(faces) > 0 else 0)
+                # Detección de cara robusta: CLAHE + fallback de cascade +
+                # cara más grande + suavizado + periodo de gracia.
+                gray_eq = self.finder.preprocess(gray)
+                box, fresh = self.finder.find(gray_eq)
+                self._detection_window.append(1 if fresh else 0)
 
-                if not self.paused and len(faces) > 0:
-                    face = tuple(int(v) for v in faces[0])
-                    self._last_face = face
-                    current_emotion, current_confidence = self._detect_emotion(gray, face)
+                if box is not None:
+                    self._last_face = box
+                else:
+                    self._last_face = None
+                    # Cara perdida de verdad (agotado el periodo de gracia):
+                    # la evidencia de sonrisa anterior ya no es válida.
+                    self._smile_window.clear()
+
+                if not self.paused and box is not None:
+                    # OJO: la emoción se analiza sobre el gris CRUDO; la ROI
+                    # canónica aplica su propia normalización local (CLAHE).
+                    current_emotion, current_confidence = self._detect_emotion(gray, box)
                     self._update_emotion_count(current_emotion, current_confidence)
                 elif self.paused:
                     current_emotion = "neutral"
@@ -180,7 +220,8 @@ class EmotionDetector:
                     self._sparkline.append(current_emotion if not self.paused else "neutral")
                     self._last_sparkline_t = now
 
-                # Pintar HUD completo
+                # Pintar HUD completo (la pill de luz evalúa el gris CRUDO,
+                # no el ecualizado: queremos medir la luz real de la sala)
                 self._draw_hud(frame, gray, current_emotion, current_confidence)
 
                 cv2.imshow(self.WINDOW_NAME, frame)
@@ -227,10 +268,12 @@ class EmotionDetector:
             "duration_seconds": total_time,
             "happy_count": self.emotion_counts["happy"],
             "angry_count": self.emotion_counts["angry"],
-            "neutral_count": self.emotion_counts["neutral"],
+            # neutral ya no se mide (modo binario v3); se conserva en el schema
+            # a 0 para no romper data_manager.py ni los CSV/dashboards existentes.
+            "neutral_count": 0,
             "happy_percentage": round(percentages["happy"], 2),
             "angry_percentage": round(percentages["angry"], 2),
-            "neutral_percentage": round(percentages["neutral"], 2),
+            "neutral_percentage": 0,
             "peak_rage_count": len(self.peak_rage_moments),
             "happiness_streaks": len(self.happiness_streaks),
             "emotional_trend": trend,
@@ -247,40 +290,91 @@ class EmotionDetector:
     # Detección
     # =========================================================================
     def _detect_emotion(self, gray: np.ndarray, face: Tuple[int, int, int, int]) -> Tuple[str, int]:
-        """Lógica binaria original: sonrisa => happy, en otro caso => angry.
+        """Detección BINARIA: sonrisa => happy, cara frontal sin sonrisa => angry.
 
-        Conservada porque es la decisión de diseño explícita del proyecto
-        ("MODO DEMO BINARIO"). La calibración solo ajusta los parámetros
-        del detector de sonrisa, no la lógica.
+        v3 — solo dos emociones medibles (feliz/enfadado). El "neutral" se
+        elimina como categoría contable; aquí solo se devuelve como estado
+        VISUAL de "medición no fiable" (cara girada/tapada), que el contador
+        ignora. Así desaparecen los cruces neutral↔enfado.
+
+        Cómo se mide la sonrisa (robusto a cualquier cara y ángulo):
+        - ROI canónica (tamaño fijo + CLAHE + ALINEADA por los ojos) →
+          invariante a distancia, luz e inclinación de la cabeza.
+        - Sonrisa solo en la región de la boca → sin falsos positivos de
+          ojos/nariz (críticos con barba, gafas o caras pequeñas).
+        - Votación temporal: happy requiere sonrisa en ≥ smile_ratio_threshold
+          de los últimos smile_window_frames frames. La confianza sale del
+          ratio real, no de una constante.
+        - Ojos con doble cascade (normal + gafas), solo en la franja superior
+          de la cara: 0 ojos ⇒ cara girada/tapada ⇒ medición no fiable
+          ("neutral" visual, NO se cuenta) en vez de inventar un angry.
         """
-        x, y, w, h = face
-        roi_gray = gray[y:y + h, x:x + w]
+        roi = extract_face_roi(gray, face)
+        if roi is None:
+            return "neutral", 0
 
-        smiles = self.smile_cascade.detectMultiScale(
-            roi_gray,
-            scaleFactor=self.config["smile_scale_factor"],
-            minNeighbors=self.config["smile_min_neighbors"],
-            minSize=tuple(self.config["smile_min_size"]),
+        # --- Evidencia de sonrisa en este frame (región de boca) ---
+        hits = detect_smile_hits(
+            self.smile_cascade,
+            roi,
+            self.config["smile_scale_factor"],
+            self.config["smile_min_neighbors"],
+            tuple(self.config["smile_min_size"]),
         )
-        eyes = self.eye_cascade.detectMultiScale(
-            roi_gray,
+        self._smile_window.append(1 if hits > 0 else 0)
+        ratio = sum(self._smile_window) / len(self._smile_window)
+
+        # --- Validez de la medición: ¿la cara está frontal y despejada? ---
+        eye_count = self._count_eyes(roi)
+
+        # --- Decisión binaria con votación temporal ---
+        smile_thr = float(self.config.get("smile_ratio_threshold", 0.4))
+        if len(self._smile_window) >= 3:
+            smiling = ratio >= smile_thr
+        else:
+            # Aún sin historial (arranque / cara recuperada): decisión cruda
+            smiling = hits > 0
+
+        if smiling:
+            confidence = int(min(100, 60 + 45 * max(ratio, smile_thr)))
+            return "happy", confidence
+        if eye_count == 0:
+            # Sin ojos visibles: cara girada, tapada u oclusión. No es
+            # evidencia de enfado ni de nada: medición no fiable → no contar.
+            return "neutral", 0
+        # Sin sonrisa con cara frontal válida ⇒ angry. La confianza crece
+        # cuanto más limpia es la ausencia de sonrisa en la ventana.
+        confidence = int(min(90, 60 + 30 * (1.0 - ratio)))
+        return "angry", confidence
+
+    def _count_eyes(self, roi_canon: np.ndarray) -> int:
+        """Cuenta ojos en la franja superior de la ROI canónica.
+
+        Prueba primero el cascade estándar y, si no encuentra nada, el de
+        gafas. Buscar solo arriba evita que la boca/nariz cuenten como ojos.
+        """
+        h = roi_canon.shape[0]
+        upper = roi_canon[: int(h * EYE_REGION_BOTTOM), :]
+        params = dict(
             scaleFactor=self.config["eye_scale_factor"],
             minNeighbors=self.config["eye_min_neighbors"],
             minSize=tuple(self.config["eye_min_size"]),
         )
-
-        if len(smiles) > 0:
-            return "happy", 85 + min(len(smiles) * 5, 15)
-        if len(eyes) < 2:
-            return "neutral", 30
-        return "angry", 80
+        eyes = self.eye_cascade.detectMultiScale(upper, **params)
+        if len(eyes) == 0:
+            eyes = self.eye_glasses_cascade.detectMultiScale(upper, **params)
+        return len(eyes)
 
     def _update_emotion_count(self, emotion: str, confidence: int) -> None:
-        """Confirma y cuenta emociones con histéresis para evitar parpadeo."""
-        # Neutral de baja confianza → tratar como angry (lógica del demo)
-        if emotion == "neutral" and confidence < 50:
-            emotion = "angry"
-            confidence = 60
+        """Confirma y cuenta emociones con histéresis para evitar parpadeo.
+
+        v3 — solo se cuentan FELIZ y ENFADADO. El estado "neutral" (medición
+        no fiable: cara girada/tapada) se ignora por completo: no se cuenta ni
+        rompe la racha actual. Esto elimina los cruces neutral↔enfado y evita
+        los "angry fantasma" cuando giras la cabeza un momento.
+        """
+        if emotion == "neutral":
+            return
 
         if emotion == self.last_emotion:
             self.emotion_counter += 1
@@ -289,8 +383,6 @@ class EmotionDetector:
             self.last_emotion = emotion
 
         threshold = self.emotion_threshold
-        if emotion == "neutral":
-            threshold = self.emotion_threshold * 4
 
         if self.emotion_counter >= threshold:
             self.frame_count += 1
@@ -341,9 +433,10 @@ class EmotionDetector:
         else:
             self.pause_start = time.time()
             self.paused = True
+            self._smile_window.clear()
 
     def _reset_counters(self) -> None:
-        self.emotion_counts = {"neutral": 0, "happy": 0, "angry": 0}
+        self.emotion_counts = {"happy": 0, "angry": 0}
         self.emotion_history = []
         self.peak_rage_moments = []
         self.happiness_streaks = []
@@ -351,6 +444,7 @@ class EmotionDetector:
         self.start_time = time.time()
         self.pause_offset = 0.0
         self._sparkline.clear()
+        self._smile_window.clear()
         print("✅ Contadores reiniciados.")
 
     def _recalibrate(self, cap: cv2.VideoCapture) -> None:
@@ -363,6 +457,10 @@ class EmotionDetector:
             profile.save()
             self.profile = profile
             self.config = dict(profile.thresholds)
+            # La ventana de votación puede cambiar de tamaño con el perfil
+            window_len = max(3, int(self.config.get("smile_window_frames", 9)))
+            self._smile_window = deque(maxlen=window_len)
+            self.finder.reset()
             print("✅ Nuevo perfil aplicado.")
         else:
             print("⚠️  Calibración cancelada, se mantiene el perfil anterior.")
