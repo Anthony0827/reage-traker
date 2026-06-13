@@ -52,7 +52,19 @@ if (-not (Test-Path $ExePath)) { throw "No se generó el ejecutable esperado." }
 $Zip = Join-Path $ProjectRoot "RageTracker-windows.zip"
 if (Test-Path $Zip) { Remove-Item $Zip -Force }
 Write-Host "[i] Comprimiendo dist\RageTracker -> RageTracker-windows.zip" -ForegroundColor Cyan
-Compress-Archive -Path "dist\RageTracker\*" -DestinationPath $Zip -CompressionLevel Optimal
+# Reintento: justo tras compilar, el antivirus puede tener bloqueado algún
+# archivo del build un par de segundos, lo que rompe la compresión.
+$zipped = $false
+for ($i = 1; $i -le 5 -and -not $zipped; $i++) {
+    try {
+        Compress-Archive -Path "dist\RageTracker\*" -DestinationPath $Zip -CompressionLevel Optimal -Force
+        $zipped = $true
+    } catch {
+        Write-Host "[i] Intento ${i}: archivo bloqueado, reintento en 3s..." -ForegroundColor Yellow
+        Start-Sleep -Seconds 3
+    }
+}
+if (-not $zipped) { throw "No se pudo comprimir el ZIP (archivo bloqueado por otro proceso, p. ej. antivirus)." }
 
 $SizeMB = [math]::Round((Get-Item $Zip).Length / 1MB, 1)
 Write-Host ""

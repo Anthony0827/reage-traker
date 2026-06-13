@@ -57,7 +57,14 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
-    excludes=[],
+    # Stack científico/notebook que se cuela transitivamente pero la app NO usa.
+    # Excluirlo recorta el paquete de ~220 MB a una fracción. (PIL se mantiene:
+    # customtkinter lo necesita para sus imágenes.)
+    excludes=[
+        "pandas", "scipy", "matplotlib", "numba", "llvmlite",
+        "IPython", "jedi", "parso", "sympy", "openpyxl", "zmq",
+        "notebook", "sphinx", "pytest", "setuptools._vendor",
+    ],
     noarchive=False,
 )
 

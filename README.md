@@ -100,6 +100,13 @@ Selecciona cualquier combinacion al iniciar una sesion:
 
 ## 🚀 Instalacion
 
+> **¿Solo quieres usarlo?** Hay un ejecutable de Windows listo para usar (no
+> necesita Python ni instalar nada): descarga el ZIP desde la
+> [pagina del proyecto](https://anthony0827.github.io/reage-traker/) o las
+> [Releases](https://github.com/Anthony0827/reage-traker/releases/latest),
+> descomprime y abre `RageTracker.exe`. La guia para generarlo esta en
+> [`BUILD.md`](BUILD.md). El resto de esta seccion es para ejecutar desde el codigo.
+
 ### Requisitos del Sistema
 
 - **Python**: 3.8 o superior
