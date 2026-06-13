@@ -900,6 +900,11 @@ class RageTrackerApp:
 
         calib_thr = float(current_thr)  # mutable, capturada por el closure
         calib_dragging = False
+        # Contador de CRUCES del umbral (flanco de subida) solo para el test:
+        # da feedback inmediato de que el slider funciona, sin esperar a los
+        # 0.3 s sostenidos que exige el contador de "gritos" de la sesión real.
+        calib_cross_count = 0
+        calib_was_above = False
 
         def on_close():
             try:
@@ -970,12 +975,22 @@ class RageTrackerApp:
 
         _mk_button(btn_frame, "💾  GUARDAR UMBRAL", _on_save,
                    height=42, font=(MONO, 13, "bold")).pack(side="right", padx=(6, 0))
-        _mk_button(btn_frame, "🔄  Reiniciar contadores", calib_monitor.reset,
+        def _reset_calib_counters():
+            nonlocal calib_cross_count, calib_was_above
+            calib_cross_count = 0
+            calib_was_above = False
+            try:
+                calib_monitor.reset()
+            except Exception:
+                pass
+
+        _mk_button(btn_frame, "🔄  Reiniciar contadores", _reset_calib_counters,
                    fg=SURFACE2, hover=SURFACE3, text_color=TEXT2,
                    height=34, font=(MONO, 11)).pack(side="left")
 
         # ---- Loop de refresco del canvas ----
         def _redraw():
+            nonlocal calib_cross_count, calib_was_above
             if not win.winfo_exists():
                 return
             try:
@@ -986,6 +1001,13 @@ class RageTrackerApp:
             except Exception:
                 win.after(60, _redraw)
                 return
+
+            # Cuenta una "superación" cada vez que el nivel cruza el umbral de
+            # abajo a arriba (flanco de subida). Feedback inmediato del slider.
+            above_now = level >= calib_thr and level > 2
+            if above_now and not calib_was_above:
+                calib_cross_count += 1
+            calib_was_above = above_now
 
             c = bar_canvas
             try:
@@ -1040,20 +1062,25 @@ class RageTrackerApp:
             c.create_text(tx, h - 14, text=f"umbral {int(calib_thr)}%",
                           fill=CYAN, font=(MONO, 9), anchor="s")
 
-            # Estado (gritando / normal)
+            # Estado (gritando / normal). Mostramos SIEMPRE las veces que se
+            # cruzó el umbral, para que se vea que el slider responde aunque no
+            # se sostenga el grito el tiempo suficiente para contar como "grito".
             if screaming:
                 status_label.configure(
-                    text=f"⚡  ¡GRITANDO!  ({scream_count} gritos detectados)"
+                    text=f"⚡  ¡GRITANDO!  —  cruces de umbral: {calib_cross_count}"
                 )
                 _set_label_fg(status_label, RAGE)
             elif level > 2:
+                pos = "por encima" if level >= calib_thr else "por debajo"
                 status_label.configure(
-                    text=f"●  Nivel actual: {int(level)}%  —  "
-                         f"{'por encima' if level >= calib_thr else 'por debajo'} del umbral"
+                    text=f"●  Nivel: {int(level)}%  ({pos} del umbral)  —  "
+                         f"cruces: {calib_cross_count}"
                 )
-                _set_label_fg(status_label, TEXT2)
+                _set_label_fg(status_label, RAGE if level >= calib_thr else TEXT2)
             else:
-                status_label.configure(text="●  Silencio... hablá o gritá para calibrar")
+                status_label.configure(
+                    text=f"●  Silencio... hablá o gritá  —  cruces: {calib_cross_count}"
+                )
                 _set_label_fg(status_label, TEXT3)
 
             win.after(60, _redraw)
@@ -1083,7 +1110,10 @@ class RageTrackerApp:
             self._warn("Indica un juego (elige uno o escribe uno nuevo).")
             return
 
-        mic_index = self._current_mic_index() if "scream" in sensors else None
+        # El micro hace falta tanto para gritos como para insultos: ambos
+        # sensores capturan audio y deben usar el dispositivo que el usuario eligió.
+        needs_mic = ("scream" in sensors) or ("insults" in sensors)
+        mic_index = self._current_mic_index() if needs_mic else None
         threshold = int(float(self.thr_var.get()))
         sensitivity = float(self.sens_var.get())
 

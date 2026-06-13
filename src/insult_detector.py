@@ -25,29 +25,34 @@ class SpanishStemmer:
     No external dependencies (no NLTK).
     """
     
+    # Sufijos de inflexión (sin guion). IMPORTANTE: van ordenados de MÁS LARGO
+    # a más corto para que "tontos" elimine "os" antes que "o" y todas las
+    # formas (tonto/tonta/tontos/tontas) colapsen al mismo radical "tont".
+    # (Bug anterior: los sufijos llevaban guion "-os" y endswith no casaba
+    #  nunca con palabras reales, así que NO se normalizaba nada.)
     SUFFIXES = (
-        "-os", "-as", "-o", "-a", "-es", 
-        "-amos", "-áis", "-an", "-en",
-        "-ar", "-er", "-ir",
-        "-ando", "-iendo"
+        "iendo", "ando", "amos", "áis", "ais",
+        "os", "as", "es", "an", "en",
+        "ar", "er", "ir",
+        "o", "a",
     )
-    
+
     @staticmethod
     def stem(word: str) -> str:
         """
         Strip longest matching Spanish suffix from word.
-        
+
         Args:
             word: Input word to stem
-            
+
         Returns:
             Stemmed word (lowercase)
         """
         if not word:
             return ""
-        
+
         word = word.lower().strip()
-        
+
         # Try each suffix in order (longest first)
         for suffix in SpanishStemmer.SUFFIXES:
             if word.endswith(suffix):
@@ -55,7 +60,7 @@ class SpanishStemmer:
                 # Basic validation: stem should have at least 2 chars
                 if len(stem) >= 2:
                     return stem
-        
+
         # No suffix matched, return original
         return word
 
@@ -75,14 +80,19 @@ class InsultDetector:
     
     BLOCK_SIZE = 1024  # frames per capture block
     
-    def __init__(self, model_path: Optional[str] = None):
+    def __init__(self, model_path: Optional[str] = None,
+                 device_index: Optional[int] = None):
         """
         Initialize the insult detector.
-        
+
         Args:
             model_path: Path to Vosk model directory. If None, uses
                        RAGE_VOSK_MODEL env var or default 'models/vosk-es'.
-        
+            device_index: Índice del micrófono (sounddevice) que debe escuchar.
+                       None = micrófono predeterminado del sistema. CLAVE: si el
+                       usuario eligió un micro concreto en la app, hay que pasarlo
+                       aquí o el detector escucharía otro micro y no oiría nada.
+
         Attributes:
             level: Always 0.0 (no volume tracking)
             is_insult_active: False (insults don't affect mic indicator)
@@ -106,7 +116,8 @@ class InsultDetector:
         self._lexicon_stems: set = set()
         self._model_name: str = ""
         self._last_detected: Dict[str, float] = {}  # stem → timestamp, para debounce
-        
+        self._device_index: Optional[int] = device_index
+
         # Determine model path
         if model_path is None:
             model_path = os.environ.get("RAGE_VOSK_MODEL", "models/vosk-es")
@@ -207,20 +218,35 @@ class InsultDetector:
                 self.last_error = "lexicon not found"
                 return False
 
-            # Stream de audio: sounddevice llama al callback con arrays numpy
-            self._stream = sd.InputStream(
-                samplerate=16000,
-                channels=1,
-                dtype='int16',
-                callback=self._callback,
-            )
-            
-            self._stream.start()
+            # Stream de audio: sounddevice llama al callback con arrays numpy.
+            # Abrimos en el micro elegido por el usuario; si ese índice falla
+            # (p. ej. no soporta 16 kHz), reintentamos en el predeterminado
+            # para no quedarnos sin detección por una incompatibilidad puntual.
+            def _open(device):
+                return sd.InputStream(
+                    samplerate=16000,
+                    channels=1,
+                    dtype='int16',
+                    device=device,
+                    callback=self._callback,
+                )
+
+            try:
+                self._stream = _open(self._device_index)
+                self._stream.start()
+            except Exception as exc_dev:
+                if self._device_index is None:
+                    raise
+                print(f"[!] Insultos: el micro {self._device_index} no se pudo "
+                      f"abrir ({exc_dev}); uso el predeterminado.")
+                self._stream = _open(None)
+                self._stream.start()
+
             self._running = True
             self.is_insult_active = True
-            
+
             return True
-            
+
         except Exception as e:
             self.last_error = f"stream: {str(e)}"
             self._running = False

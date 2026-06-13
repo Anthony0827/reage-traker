@@ -180,7 +180,10 @@ def run_session(
                     if not want_emotions and not want_insults:
                         return None
             if want_insults:
-                insult_detector = InsultDetector()
+                # Pasamos el MISMO micro elegido por el usuario: si no, el
+                # detector escucharía el predeterminado del sistema y no oiría
+                # nada cuando el micro activo es otro.
+                insult_detector = InsultDetector(device_index=mic_index)
                 if not insult_detector.start():
                     why = getattr(insult_detector, "last_error", "") or "motivo desconocido"
                     print(f"[!] No se pudo iniciar el detector de insultos ({why}).")
