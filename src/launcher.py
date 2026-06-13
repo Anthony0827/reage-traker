@@ -189,7 +189,10 @@ def _mk_scrollable(parent, fg=BG):
     Esto evita que las ventanas con mucho contenido (p. ej. sesión con los tres
     sensores) recorten botones en pantallas pequeñas."""
     if _ctk():
-        sf = _CTK.CTkScrollableFrame(parent, fg_color=fg, corner_radius=0)
+        # border_width=0 + scrollbar transparente: sin el recuadro/franja que
+        # antes se veía como "bordes raros" alrededor del contenido.
+        sf = _CTK.CTkScrollableFrame(parent, fg_color=fg, corner_radius=0,
+                                     border_width=0, scrollbar_fg_color="transparent")
         return sf, sf
 
     outer = _TK.Frame(parent, bg=fg, bd=0, highlightthickness=0)
