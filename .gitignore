@@ -37,6 +37,8 @@ Thumbs.db
 # El .spec SÍ se versiona; los artefactos de build no.
 build/
 dist/
+# El ZIP se distribuye como asset de Release (no en el repo: pesa >100 MB).
+RageTracker-windows.zip
 
 _backup_old_files/
 
