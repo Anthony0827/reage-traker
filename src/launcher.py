@@ -676,8 +676,22 @@ class RageTrackerApp:
         win.protocol("WM_DELETE_WINDOW", on_close)
 
         # ---- UI ----
-        body = _mk_frame(win, fg=BG, corner=0)
-        body.pack(fill="both", expand=True, padx=22, pady=18)
+        # Barra inferior FIJA (fuera del scroll): el botón GUARDAR siempre queda
+        # visible aunque el contenido no entre en la pantalla. _save/_stop/
+        # on_close se resuelven al hacer clic, por eso pueden referenciarse aquí
+        # aunque _save se defina más abajo.
+        actions = _mk_frame(win, fg=BG, corner=0)
+        actions.pack(fill="x", side="bottom", padx=22, pady=(8, 16))
+        _mk_button(actions, "💾  GUARDAR Y CERRAR", lambda: (_save(), on_close()),
+                   height=44, font=(MONO, 13, "bold")).pack(fill="x")
+        _mk_button(actions, "🎤  Calibrar con grito real",
+                   lambda: (_save(), _stop(), on_close(), self._open_mic_calibration()),
+                   fg=SURFACE2, hover=SURFACE3, text_color=CYAN,
+                   height=34, font=(MONO, 11)).pack(fill="x", pady=(8, 0))
+
+        # Contenido scrollable (todo lo demás).
+        scroll, body = _mk_scrollable(win, fg=BG)
+        scroll.pack(fill="both", expand=True, padx=22, pady=(18, 0))
 
         _mk_label(body, "CONFIGURAR MICRÓFONO", (DISP, 22, "bold"), CYAN, bg=BG).pack(anchor="w")
         _mk_label(body, "// seleccioná el micro, ajustá umbral y sensibilidad",
@@ -780,16 +794,8 @@ class RageTrackerApp:
                                    (MONO, 10), CYAN, bg=SURFACE)
         sens_val_label.pack(anchor="w", padx=16, pady=(0, 12))
 
-        # ---- Botones ----
-        btn_frame = _mk_frame(body, fg=BG, corner=0)
-        btn_frame.pack(fill="x", pady=(8, 0))
-        _mk_button(btn_frame, "💾  GUARDAR Y CERRAR",
-                   lambda: (_save(), on_close()),
-                   height=42, font=(MONO, 13, "bold")).pack(side="right", padx=(6, 0))
-        _mk_button(btn_frame, "🎤  Calibrar con grito real",
-                   lambda: (_save(), _stop(), on_close(), self._open_mic_calibration()),
-                   fg=SURFACE2, hover=SURFACE3, text_color=CYAN,
-                   height=34, font=(MONO, 10)).pack(side="left")
+        # (Los botones GUARDAR / Calibrar viven en la barra inferior fija `actions`,
+        #  creada arriba, para que nunca queden recortados.)
 
         def _save():
             self.mic_var.set(mic_var_local.get())
