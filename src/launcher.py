@@ -226,6 +226,57 @@ def _double_var(value=0.0):
     return _TK.DoubleVar(value=value)
 
 
+def _place(win, w, h, min_w=None, min_h=None, top_ratio=0.45):
+    """Dimensiona y centra una ventana ajustándola a la pantalla visible.
+
+    En monitores con escala de Windows alta (125-150%) CustomTkinter agranda
+    las ventanas según el DPI y pueden salirse de la pantalla, dejando botones
+    recortados (típico en monitores grandes de escritorio). Aquí limitamos el
+    tamaño a un 96% del ancho y un 90% del alto reales y centramos la ventana,
+    de modo que nunca quede nada fuera; el contenido que no entre se ve con
+    scroll. Funciona igual con tkinter estándar (escala 1.0)."""
+    try:
+        win.update_idletasks()
+    except Exception:
+        pass
+    try:
+        sw = int(win.winfo_screenwidth())
+        sh = int(win.winfo_screenheight())
+    except Exception:
+        sw, sh = 1920, 1080
+
+    # Factor de escala DPI que aplica CustomTkinter al tamaño (no a la posición).
+    scale = 1.0
+    if _ctk():
+        try:
+            scale = float(_CTK.ScalingTracker.get_window_scaling(win))
+        except Exception:
+            scale = 1.0
+    if scale <= 0:
+        scale = 1.0
+
+    # geometry() recibe unidades SIN escalar (CTk las multiplica por `scale`),
+    # así que convertimos el máximo en px físicos a esas unidades.
+    max_w = (sw * 0.96) / scale
+    max_h = (sh * 0.90) / scale
+    w = int(min(w, max_w))
+    h = int(min(h, max_h))
+
+    # La posición x/y va en px físicos (CTk no la escala).
+    x = max(0, int((sw - w * scale) / 2))
+    y = max(0, int((sh - h * scale) * top_ratio))
+    try:
+        win.geometry(f"{w}x{h}+{x}+{y}")
+    except Exception:
+        pass
+
+    if min_w or min_h:
+        try:
+            win.minsize(min(int(min_w or w), w), min(int(min_h or h), h))
+        except Exception:
+            pass
+
+
 # =============================================================================
 # Servidor del dashboard (thread interno, idempotente)
 # =============================================================================
@@ -274,11 +325,7 @@ class RageTrackerApp:
             self.root = _TK.Tk()
         self.root.title("RAGE TRACKER")
         self.root.configure(bg=BG)
-        self.root.geometry("720x540")
-        try:
-            self.root.minsize(640, 500)
-        except Exception:
-            pass
+        _place(self.root, 720, 560, min_w=560, min_h=480)
 
         self.dm = DataManager()
         self._config_win = None
@@ -412,8 +459,7 @@ class RageTrackerApp:
         # El contenido va en un área scrollable, así que un alto moderado basta:
         # si con los tres sensores no entra todo, el usuario hace scroll en vez
         # de encontrarse botones recortados.
-        win.geometry("520x700")
-        win.minsize(480, 520)
+        _place(win, 520, 700, min_w=460, min_h=420)
         self._config_win = win
 
         def on_close():
@@ -562,8 +608,8 @@ class RageTrackerApp:
         win = _CTK.CTkToplevel(parent) if _ctk() else _TK.Toplevel(parent)
         win.title("Configurar micrófono")
         win.configure(bg=BG)
-        win.geometry("560x700")
-        win.resizable(False, True)
+        _place(win, 560, 700, min_w=460, min_h=420)
+        win.resizable(True, True)
         win.transient(parent)
         win.grab_set()
 
@@ -880,8 +926,8 @@ class RageTrackerApp:
         win = _CTK.CTkToplevel(parent) if _ctk() else _TK.Toplevel(parent)
         win.title("Calibrar micrófono")
         win.configure(bg=BG)
-        win.geometry("580x460")
-        win.resizable(False, False)
+        _place(win, 580, 480, min_w=460, min_h=380)
+        win.resizable(True, True)
         # La ventana de calibración es modal: bloquea la interacción con la
         # ventana padre hasta que el usuario termine de calibrar o cierre.
         win.transient(parent)
@@ -1167,9 +1213,8 @@ class RageTrackerApp:
         win = _CTK.CTkToplevel(parent) if _ctk() else _TK.Toplevel(parent)
         win.title("Configurar insultos")
         win.configure(bg=BG)
-        win.geometry("500x580")
-        win.minsize(460, 480)
-        win.resizable(False, True)
+        _place(win, 500, 580, min_w=440, min_h=420)
+        win.resizable(True, True)
         win.transient(parent)
         win.grab_set()
 
