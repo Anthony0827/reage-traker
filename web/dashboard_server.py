@@ -21,12 +21,18 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 
-# Raíz del proyecto y rutas absolutas derivadas (no dependen del cwd).
-# Crucial para que el servidor funcione cuando se lanza desde la GUI
-# o desde cualquier otro directorio, y para el futuro empaquetado .exe.
-ROOT = Path(__file__).resolve().parent.parent
-DASHBOARD_HTML = ROOT / "web" / "dashboard.html"
-DATA_DIR = ROOT / "data"
+# Rutas frozen-aware: el HTML es un recurso de solo lectura (empaquetado en el
+# .exe) y los CSV viven en la carpeta de datos de usuario (escribible). En
+# desarrollo ambos resuelven a la raíz del proyecto, igual que antes. Si por lo
+# que sea no se puede importar src.paths, caemos al cálculo clásico por __file__.
+try:
+    from src.paths import resource_path, user_data_dir
+    DASHBOARD_HTML = Path(resource_path("web", "dashboard.html"))
+    DATA_DIR = Path(user_data_dir()) / "data"
+except Exception:
+    ROOT = Path(__file__).resolve().parent.parent
+    DASHBOARD_HTML = ROOT / "web" / "dashboard.html"
+    DATA_DIR = ROOT / "data"
 
 
 class RageTrackerHandler(http.server.SimpleHTTPRequestHandler):

@@ -120,8 +120,13 @@ DEFAULT_THRESHOLDS: Dict = {
 }
 
 
-PROFILES_DIR = "data"
-PROFILE_FILE = os.path.join(PROFILES_DIR, "calibration_profile.json")
+from src.paths import user_data_path
+
+# Perfil de calibración en carpeta de datos de usuario (escritura). En
+# desarrollo resuelve a data/ del proyecto; en el .exe a %APPDATA%/RageTracker.
+# Antes era relativo al cwd, lo que fallaba si la app se lanzaba desde otra ruta.
+PROFILES_DIR = os.path.dirname(user_data_path("data", "calibration_profile.json"))
+PROFILE_FILE = user_data_path("data", "calibration_profile.json")
 
 
 # -----------------------------------------------------------------------------

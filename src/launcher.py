@@ -26,6 +26,8 @@ import threading
 import webbrowser
 from pathlib import Path
 
+from src.paths import app_launch_cmd, is_frozen, user_data_dir
+
 # ---- Backends de GUI (import tolerante: el módulo nunca peta al importarse) --
 # Si CustomTkinter no está instalado, caigo a tkinter automáticamente.
 # Si no hay ninguno, GUI_AVAILABLE es False y launch() imprime un aviso.
@@ -241,8 +243,9 @@ def _ensure_dashboard_running(port: int = DASHBOARD_PORT) -> int:
     try:
         if _DASH_MOD is None:
             import importlib.util
+            from src.paths import resource_path
             spec = importlib.util.spec_from_file_location(
-                "rt_dashboard_server", str(ROOT / "web" / "dashboard_server.py")
+                "rt_dashboard_server", resource_path("web", "dashboard_server.py")
             )
             _DASH_MOD = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(_DASH_MOD)  # type: ignore
@@ -1121,9 +1124,9 @@ class RageTrackerApp:
         # para que no haya conflicto de dispositivos.
         self._stop_preview()
 
-        cmd = [sys.executable, str(MAIN_PY), "--session", "--game", game,
-               "--sensors", *sensors, "--threshold", str(threshold),
-               "--sensitivity", str(sensitivity)]
+        cmd = app_launch_cmd("--session", "--game", game,
+                             "--sensors", *sensors, "--threshold", str(threshold),
+                             "--sensitivity", str(sensitivity))
         if mic_index is not None:
             cmd += ["--mic", str(mic_index)]
 
@@ -1140,7 +1143,7 @@ class RageTrackerApp:
 
     def _on_recalibrate(self):
         self._stop_preview()
-        cmd = [sys.executable, str(MAIN_PY), "--calibrate"]
+        cmd = app_launch_cmd("--calibrate")
         try:
             if self._config_win is not None:
                 self._config_win.destroy()
@@ -1224,8 +1227,9 @@ class RageTrackerApp:
         Comprueba RAGE_VOSK_MODEL y, si no, la ruta por defecto models/vosk-es.
         Da feedback claro al usuario en lugar de un texto fijo."""
         import os
+        from src.paths import resource_path
         env = os.environ.get("RAGE_VOSK_MODEL")
-        candidate = Path(env) if env else (ROOT / "models" / "vosk-es")
+        candidate = Path(env) if env else Path(resource_path("models", "vosk-es"))
         try:
             present = candidate.exists() and any(candidate.iterdir())
         except Exception:
@@ -1236,9 +1240,14 @@ class RageTrackerApp:
         return ("models/vosk-es  ·  no encontrado (se descargará al usar)", WARN)
 
     def _run_subprocess(self, cmd):
+        # En desarrollo lanzamos desde la raíz del proyecto; congelado, desde la
+        # carpeta de datos de usuario (escribible) ya que las rutas internas son
+        # absolutas y ROOT/main.py no existe dentro del .exe.
+        run_cwd = str(user_data_dir()) if is_frozen() else str(ROOT)
+
         def worker():
             try:
-                subprocess.run(cmd, cwd=str(ROOT))
+                subprocess.run(cmd, cwd=run_cwd)
             except Exception as exc:  # noqa: BLE001
                 print(f"[!] Error ejecutando la sesión: {exc}")
             finally:

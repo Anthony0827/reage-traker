@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Rage Tracker — mide tu rabia (y tu risa) mientras juegas</title>
+<meta name="description" content="Rage Tracker detecta en tiempo real si juegas feliz o enfadado por la webcam, cuenta tus gritos por el micrófono y registra insultos. Todo local, sin nube." />
+<link rel="icon" href="https://github.com/Anthony0827/reage-traker/raw/master/web/icono.ico" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;700;900&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#0a0d14; --bg-deep:#060810; --surface:#11161f; --surface-2:#161c28;
+    --border:#232b3b; --text:#e8ecf3; --text-2:#a4adc1; --text-3:#6a7488;
+    --cyan:#5cf0d2; --rage:#ff5260; --happy:#7cd87a; --warn:#ffc857;
+    --display:'Big Shoulders Display',sans-serif; --body:'Space Grotesk',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--text);font-family:var(--body);line-height:1.6;
+    background-image:radial-gradient(circle at 20% -10%,rgba(92,240,210,.08),transparent 40%),
+      radial-gradient(circle at 90% 0%,rgba(255,82,96,.08),transparent 35%);}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 24px}
+  a{color:var(--cyan);text-decoration:none}
+
+  /* ---- NAV ---- */
+  nav{display:flex;align-items:center;justify-content:space-between;padding:22px 0}
+  .brand{display:flex;align-items:center;gap:12px;font-family:var(--display);
+    font-weight:900;letter-spacing:1px;font-size:22px}
+  .brand .dot{width:12px;height:12px;border-radius:50%;background:var(--rage);
+    box-shadow:0 0 12px var(--rage)}
+  nav .links{display:flex;gap:24px;font-size:14px;color:var(--text-2)}
+  nav .links a:hover{color:var(--text)}
+
+  /* ---- HERO ---- */
+  header{text-align:center;padding:70px 0 50px}
+  .tag{display:inline-block;border:1px solid var(--border);border-radius:999px;
+    padding:6px 16px;font-size:13px;color:var(--text-2);margin-bottom:26px}
+  h1{font-family:var(--display);font-weight:900;font-size:clamp(46px,9vw,96px);
+    line-height:.95;letter-spacing:1px}
+  h1 .rage{color:var(--rage)} h1 .happy{color:var(--happy)}
+  .sub{max-width:640px;margin:22px auto 0;color:var(--text-2);font-size:18px}
+  .cta{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-top:38px}
+  .btn{font-family:var(--display);font-weight:700;font-size:18px;letter-spacing:.5px;
+    padding:16px 34px;border-radius:12px;border:1px solid transparent;cursor:pointer;
+    transition:transform .12s ease,box-shadow .12s ease;display:inline-flex;align-items:center;gap:10px}
+  .btn-primary{background:var(--cyan);color:#04130f;box-shadow:0 0 0 rgba(92,240,210,.5)}
+  .btn-primary:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(92,240,210,.25)}
+  .btn-ghost{background:transparent;color:var(--text);border-color:var(--border)}
+  .btn-ghost:hover{border-color:var(--cyan);color:var(--cyan)}
+  .hint{margin-top:14px;font-size:13px;color:var(--text-3)}
+
+  /* ---- SECTIONS ---- */
+  section{padding:56px 0}
+  h2{font-family:var(--display);font-weight:800;font-size:34px;letter-spacing:.5px;margin-bottom:8px}
+  .lead{color:var(--text-2);margin-bottom:34px;max-width:680px}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px}
+  .card .ico{font-size:26px;margin-bottom:12px}
+  .card h3{font-family:var(--display);font-weight:700;font-size:21px;margin-bottom:8px}
+  .card p{color:var(--text-2);font-size:15px}
+  .card.rage{border-color:rgba(255,82,96,.35)} .card.rage h3{color:var(--rage)}
+  .card.happy{border-color:rgba(124,216,122,.35)} .card.happy h3{color:var(--happy)}
+  .card.cyan{border-color:rgba(92,240,210,.35)} .card.cyan h3{color:var(--cyan)}
+  .card.warn{border-color:rgba(255,200,87,.35)} .card.warn h3{color:var(--warn)}
+
+  .steps{counter-reset:s;display:grid;gap:14px;margin-top:8px}
+  .step{display:flex;gap:18px;align-items:flex-start;background:var(--surface);
+    border:1px solid var(--border);border-radius:14px;padding:18px 22px}
+  .step::before{counter-increment:s;content:counter(s);font-family:var(--display);
+    font-weight:900;font-size:24px;color:var(--cyan);min-width:34px}
+  .step b{color:var(--text)}
+  .step span{color:var(--text-2)}
+
+  .note{background:var(--surface-2);border:1px solid var(--border);border-radius:14px;
+    padding:20px 24px;color:var(--text-2);font-size:14px;margin-top:24px}
+  .note b{color:var(--text)}
+
+  footer{border-top:1px solid var(--border);padding:34px 0;color:var(--text-3);
+    font-size:14px;text-align:center;margin-top:30px}
+  footer a{color:var(--text-2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <nav>
+    <div class="brand"><span class="dot"></span> RAGE TRACKER</div>
+    <div class="links">
+      <a href="#features">Qué hace</a>
+      <a href="#como">Cómo va</a>
+      <a href="#install">Instalar</a>
+      <a href="https://github.com/Anthony0827/reage-traker">GitHub</a>
+    </div>
+  </nav>
+
+  <header>
+    <span class="tag">Webcam + micrófono · 100% local · sin nube</span>
+    <h1>¿Juegas <span class="happy">feliz</span><br>o con <span class="rage">rabia</span>?</h1>
+    <p class="sub">Rage Tracker te observa por la webcam y el micrófono mientras
+      juegas: detecta si estás feliz o enfadado, cuenta tus gritos y registra
+      insultos. Al terminar, un panel te enseña tu lado más salvaje.</p>
+    <div class="cta">
+      <a class="btn btn-primary" href="#install">⬇ Descargar para Windows</a>
+      <a class="btn btn-ghost" href="https://github.com/Anthony0827/reage-traker">Ver el código</a>
+    </div>
+    <div class="hint">Gratis y de código abierto · Windows 10/11</div>
+  </header>
+
+  <section id="features">
+    <h2>Qué hace</h2>
+    <p class="lead">Cuatro sensores que puedes activar por separado o juntos.
+      Todo el procesado ocurre en tu PC; ni vídeo ni audio salen de tu equipo.</p>
+    <div class="grid">
+      <div class="card happy">
+        <div class="ico">😀</div>
+        <h3>Cara feliz / enfadado</h3>
+        <p>Detección por webcam robusta al ángulo de la cabeza: te alinea la cara
+           por los ojos para no fallar cuando la ladeas. Sonríes → feliz; cara
+           seria → enfadado.</p>
+      </div>
+      <div class="card rage">
+        <div class="ico">🔊</div>
+        <h3>Detector de gritos</h3>
+        <p>Mide el volumen del micrófono en vivo y cuenta tus gritos. Tú ajustas
+           el umbral con una barra visual hasta que solo salta cuando gritas de verdad.</p>
+      </div>
+      <div class="card warn">
+        <div class="ico">🤬</div>
+        <h3>Contador de insultos</h3>
+        <p>Reconocimiento de voz en español (offline) que cuenta los tacos que
+           sueltas. Nunca muestra ni guarda lo que dices: solo el número.</p>
+      </div>
+      <div class="card cyan">
+        <div class="ico">📊</div>
+        <h3>Dashboard de partidas</h3>
+        <p>Cada sesión se guarda y un panel en el navegador te muestra tu juego
+           más rabioso, el más feliz, el más ruidoso y tu evolución.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="como">
+    <h2>Cómo funciona</h2>
+    <p class="lead">De cero a medir en un minuto. No hace falta tocar la terminal.</p>
+    <div class="steps">
+      <div class="step"><div><b>Descarga y descomprime</b> <span>el ZIP de la última versión.</span></div></div>
+      <div class="step"><div><b>Abre RageTracker.exe</b> <span>— se abre una ventana con todo a la vista.</span></div></div>
+      <div class="step"><div><b>Calibra tu cara</b> <span>una vez (sonríe y pon cara seria) para afinar la detección.</span></div></div>
+      <div class="step"><div><b>Elige sensores y juega</b> <span>— cara, gritos, insultos o todo a la vez.</span></div></div>
+      <div class="step"><div><b>Mira tu dashboard</b> <span>al terminar y descubre tu lado más salvaje.</span></div></div>
+    </div>
+  </section>
+
+  <section id="install">
+    <h2>Instalar</h2>
+    <p class="lead">Un único ZIP con todo dentro (incluye el modelo de voz). No
+      necesita Python ni instalar dependencias.</p>
+    <div class="cta" style="justify-content:flex-start">
+      <a class="btn btn-primary" href="https://github.com/Anthony0827/reage-traker/releases/latest">⬇ Descargar última versión</a>
+    </div>
+    <div class="note">
+      <b>Cómo ejecutarlo:</b> descomprime el ZIP en una carpeta y haz doble clic
+      en <b>RageTracker.exe</b>. La primera vez Windows SmartScreen puede avisar de
+      que es un programa nuevo: pulsa <b>«Más información» → «Ejecutar de todas
+      formas»</b>. Tus datos de calibración y de partidas se guardan en tu carpeta
+      de usuario (<b>%APPDATA%\RageTracker</b>), no dentro del programa.
+    </div>
+    <div class="note">
+      <b>Requisitos:</b> Windows 10/11 · webcam para la detección de cara ·
+      micrófono para gritos e insultos. Cada sensor es opcional.
+    </div>
+  </section>
+
+  <footer>
+    Rage Tracker · proyecto de código abierto ·
+    <a href="https://github.com/Anthony0827/reage-traker">github.com/Anthony0827/reage-traker</a>
+  </footer>
+
+</div>
+</body>
+</html>

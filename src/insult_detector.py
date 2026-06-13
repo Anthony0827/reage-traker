@@ -16,6 +16,8 @@ import vosk
 import sounddevice as sd
 from typing import Optional, List, Dict, Any
 
+from src.paths import resource_path
+
 
 class SpanishStemmer:
     """
@@ -118,9 +120,12 @@ class InsultDetector:
         self._last_detected: Dict[str, float] = {}  # stem → timestamp, para debounce
         self._device_index: Optional[int] = device_index
 
-        # Determine model path
+        # Determine model path. Por defecto, el modelo empaquetado (recurso de
+        # solo lectura). RAGE_VOSK_MODEL permite forzar otro modelo externo.
         if model_path is None:
-            model_path = os.environ.get("RAGE_VOSK_MODEL", "models/vosk-es")
+            model_path = os.environ.get(
+                "RAGE_VOSK_MODEL", resource_path("models", "vosk-es")
+            )
         self._model_path = model_path
     
     def _load_lexicon(self, lexicon_path: str) -> bool:
@@ -211,9 +216,8 @@ class InsultDetector:
             # KaldiRecognizer a 16kHz — no existe SetLanguage, el modelo ya es español
             self._recognizer = vosk.KaldiRecognizer(model, 16000)
 
-            # Cargar léxico
-            lexicon_path = os.path.join(os.path.dirname(__file__),
-                                        '..', 'data', 'insultos.csv')
+            # Cargar léxico (recurso empaquetado de solo lectura)
+            lexicon_path = resource_path('data', 'insultos.csv')
             if not self._load_lexicon(lexicon_path):
                 self.last_error = "lexicon not found"
                 return False

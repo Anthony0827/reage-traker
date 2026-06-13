@@ -17,8 +17,12 @@ from datetime import datetime
 from pathlib import Path
 
 
-# Raíz del proyecto (… / rage_tracker), independiente del cwd → robusto para .exe
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+from src.paths import user_data_dir
+
+# Raíz para los DATOS de usuario (CSV de sesiones/juegos). En desarrollo es la
+# raíz del proyecto; en el .exe es %APPDATA%/RageTracker (escribible). Así los
+# datos nunca intentan escribirse dentro del ejecutable de solo lectura.
+PROJECT_ROOT = user_data_dir()
 
 # Esquema canónico de sessions.csv. Las 7 últimas son las nuevas (Fase 3 + insultos).
 BASE_SESSION_FIELDS = [
