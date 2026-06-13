@@ -4,181 +4,464 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Rage Tracker — mide tu rabia (y tu risa) mientras juegas</title>
-<meta name="description" content="Rage Tracker detecta en tiempo real si juegas feliz o enfadado por la webcam, cuenta tus gritos por el micrófono y registra insultos. Todo local, sin nube." />
+<meta name="description" content="Rage Tracker detecta en tiempo real si juegas feliz o enfadado por la webcam, cuenta tus gritos por el micrófono y registra tus insultos. Todo local, sin nube. Hecho en Python." />
+<meta property="og:title" content="Rage Tracker — ¿juegas feliz o con rabia?" />
+<meta property="og:description" content="Detecta emociones, gritos e insultos mientras juegas. 100% local, gratis y de código abierto." />
+<meta property="og:type" content="website" />
 <link rel="icon" href="https://github.com/Anthony0827/reage-traker/raw/master/web/icono.ico" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;700;900&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Unbounded:wght@500;700;800;900&display=swap" rel="stylesheet" />
 <style>
   :root{
-    --bg:#0a0d14; --bg-deep:#060810; --surface:#11161f; --surface-2:#161c28;
-    --border:#232b3b; --text:#e8ecf3; --text-2:#a4adc1; --text-3:#6a7488;
-    --cyan:#5cf0d2; --rage:#ff5260; --happy:#7cd87a; --warn:#ffc857;
-    --display:'Big Shoulders Display',sans-serif; --body:'Space Grotesk',sans-serif;
+    --bg:#06070d; --bg2:#0a0c16; --surface:rgba(20,24,38,.55); --surface-solid:#11151f;
+    --border:rgba(120,140,180,.16); --text:#eef1f8; --text-2:#aab2c8; --text-3:#6c7691;
+    --cyan:#4df0d8; --rage:#ff4d63; --happy:#7ee27a; --warn:#ffc44d; --violet:#9d7bff;
+    --display:'Unbounded',sans-serif; --body:'Space Grotesk',sans-serif;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html{scroll-behavior:smooth}
   body{background:var(--bg);color:var(--text);font-family:var(--body);line-height:1.6;
-    background-image:radial-gradient(circle at 20% -10%,rgba(92,240,210,.08),transparent 40%),
-      radial-gradient(circle at 90% 0%,rgba(255,82,96,.08),transparent 35%);}
-  .wrap{max-width:1040px;margin:0 auto;padding:0 24px}
+    overflow-x:hidden;}
   a{color:var(--cyan);text-decoration:none}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px;position:relative;z-index:2}
 
-  /* ---- NAV ---- */
-  nav{display:flex;align-items:center;justify-content:space-between;padding:22px 0}
+  /* ---------- FONDOS ANIMADOS ---------- */
+  /* canvas 3D fijo detrás de todo */
+  #scene3d{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+  /* capa de gradientes vivos */
+  .bg-aurora{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+  .blob{position:absolute;border-radius:50%;filter:blur(90px);opacity:.5;
+    mix-blend-mode:screen;animation:drift 22s ease-in-out infinite}
+  .blob.a{width:520px;height:520px;background:radial-gradient(circle,#16d6c0,transparent 70%);top:-120px;left:-80px}
+  .blob.b{width:560px;height:560px;background:radial-gradient(circle,#ff3b54,transparent 70%);top:10%;right:-140px;animation-delay:-6s}
+  .blob.c{width:480px;height:480px;background:radial-gradient(circle,#8a5cff,transparent 70%);bottom:-120px;left:30%;animation-delay:-12s}
+  @keyframes drift{
+    0%,100%{transform:translate(0,0) scale(1)}
+    33%{transform:translate(60px,-40px) scale(1.15)}
+    66%{transform:translate(-40px,50px) scale(.9)}
+  }
+  /* rejilla sutil */
+  .bg-grid{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.35;
+    background-image:linear-gradient(rgba(120,140,180,.06) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(120,140,180,.06) 1px,transparent 1px);
+    background-size:54px 54px;mask-image:radial-gradient(circle at 50% 30%,#000,transparent 80%)}
+  /* viñeta para legibilidad */
+  .bg-vignette{position:fixed;inset:0;z-index:1;pointer-events:none;
+    background:radial-gradient(circle at 50% 0%,transparent 40%,rgba(3,4,9,.55) 100%)}
+
+  /* ---------- NAV ---------- */
+  nav{display:flex;align-items:center;justify-content:space-between;padding:20px 0;
+    position:sticky;top:0;z-index:20;backdrop-filter:blur(12px);
+    background:linear-gradient(to bottom,rgba(6,7,13,.85),rgba(6,7,13,0))}
   .brand{display:flex;align-items:center;gap:12px;font-family:var(--display);
-    font-weight:900;letter-spacing:1px;font-size:22px}
-  .brand .dot{width:12px;height:12px;border-radius:50%;background:var(--rage);
-    box-shadow:0 0 12px var(--rage)}
-  nav .links{display:flex;gap:24px;font-size:14px;color:var(--text-2)}
+    font-weight:800;letter-spacing:.5px;font-size:19px}
+  .brand .dot{width:13px;height:13px;border-radius:50%;background:var(--rage);
+    box-shadow:0 0 14px var(--rage);animation:pulse 1.8s ease-in-out infinite}
+  @keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.3);opacity:.7}}
+  nav .links{display:flex;gap:26px;font-size:14px;color:var(--text-2)}
+  nav .links a{transition:color .2s}
   nav .links a:hover{color:var(--text)}
+  @media(max-width:680px){nav .links{display:none}}
 
-  /* ---- HERO ---- */
-  header{text-align:center;padding:70px 0 50px}
-  .tag{display:inline-block;border:1px solid var(--border);border-radius:999px;
-    padding:6px 16px;font-size:13px;color:var(--text-2);margin-bottom:26px}
-  h1{font-family:var(--display);font-weight:900;font-size:clamp(46px,9vw,96px);
-    line-height:.95;letter-spacing:1px}
-  h1 .rage{color:var(--rage)} h1 .happy{color:var(--happy)}
-  .sub{max-width:640px;margin:22px auto 0;color:var(--text-2);font-size:18px}
-  .cta{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-top:38px}
-  .btn{font-family:var(--display);font-weight:700;font-size:18px;letter-spacing:.5px;
-    padding:16px 34px;border-radius:12px;border:1px solid transparent;cursor:pointer;
-    transition:transform .12s ease,box-shadow .12s ease;display:inline-flex;align-items:center;gap:10px}
-  .btn-primary{background:var(--cyan);color:#04130f;box-shadow:0 0 0 rgba(92,240,210,.5)}
-  .btn-primary:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(92,240,210,.25)}
-  .btn-ghost{background:transparent;color:var(--text);border-color:var(--border)}
-  .btn-ghost:hover{border-color:var(--cyan);color:var(--cyan)}
-  .hint{margin-top:14px;font-size:13px;color:var(--text-3)}
+  /* ---------- HERO ---------- */
+  header{text-align:center;padding:90px 0 80px;position:relative}
+  .tag{display:inline-flex;align-items:center;gap:9px;border:1px solid var(--border);
+    border-radius:999px;padding:7px 18px;font-size:13px;color:var(--text-2);
+    margin-bottom:30px;background:rgba(20,24,38,.4);backdrop-filter:blur(6px)}
+  .tag .live{width:8px;height:8px;border-radius:50%;background:var(--happy);
+    box-shadow:0 0 10px var(--happy);animation:pulse 1.6s infinite}
+  h1{font-family:var(--display);font-weight:900;font-size:clamp(48px,9vw,108px);
+    line-height:.98;letter-spacing:-1px}
+  h1 .rage{background:linear-gradient(120deg,#ff4d63,#ff8a4d);-webkit-background-clip:text;background-clip:text;color:transparent}
+  h1 .happy{background:linear-gradient(120deg,#7ee27a,#4df0d8);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{max-width:660px;margin:26px auto 0;color:var(--text-2);font-size:19px}
+  .cta{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-top:42px}
+  .btn{font-family:var(--display);font-weight:700;font-size:16px;letter-spacing:.3px;
+    padding:17px 36px;border-radius:14px;border:1px solid transparent;cursor:pointer;
+    transition:transform .15s ease,box-shadow .15s ease;display:inline-flex;align-items:center;gap:10px}
+  .btn-primary{position:relative;background:linear-gradient(120deg,var(--cyan),#39c9e6);color:#04130f;
+    box-shadow:0 8px 30px rgba(77,240,216,.35)}
+  .btn-primary:hover{transform:translateY(-3px);box-shadow:0 14px 44px rgba(77,240,216,.5)}
+  .btn-ghost{background:rgba(20,24,38,.5);color:var(--text);border-color:var(--border);backdrop-filter:blur(6px)}
+  .btn-ghost:hover{border-color:var(--cyan);color:var(--cyan);transform:translateY(-3px)}
+  .hint{margin-top:16px;font-size:13px;color:var(--text-3)}
+  .scroll-cue{margin-top:60px;display:inline-flex;flex-direction:column;align-items:center;
+    gap:8px;color:var(--text-3);font-size:12px;letter-spacing:2px;text-transform:uppercase}
+  .scroll-cue .mouse{width:24px;height:38px;border:2px solid var(--text-3);border-radius:13px;position:relative}
+  .scroll-cue .mouse::before{content:"";position:absolute;left:50%;top:7px;width:4px;height:7px;
+    border-radius:2px;background:var(--text-3);transform:translateX(-50%);animation:wheel 1.6s infinite}
+  @keyframes wheel{0%{opacity:1;top:7px}70%{opacity:0;top:18px}100%{opacity:0}}
 
-  /* ---- SECTIONS ---- */
-  section{padding:56px 0}
-  h2{font-family:var(--display);font-weight:800;font-size:34px;letter-spacing:.5px;margin-bottom:8px}
-  .lead{color:var(--text-2);margin-bottom:34px;max-width:680px}
+  /* contadores tipo HUD */
+  .hud{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:54px}
+  .hud .chip{background:var(--surface);border:1px solid var(--border);border-radius:14px;
+    padding:16px 22px;min-width:130px;backdrop-filter:blur(8px)}
+  .hud .num{font-family:var(--display);font-weight:800;font-size:30px;line-height:1}
+  .hud .num.rage{color:var(--rage)} .hud .num.happy{color:var(--happy)}
+  .hud .num.cyan{color:var(--cyan)} .hud .num.warn{color:var(--warn)}
+  .hud .lbl{font-size:12px;color:var(--text-3);margin-top:6px;letter-spacing:.5px}
 
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px}
-  .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px}
-  .card .ico{font-size:26px;margin-bottom:12px}
-  .card h3{font-family:var(--display);font-weight:700;font-size:21px;margin-bottom:8px}
+  /* ---------- SECCIONES ---------- */
+  section{padding:80px 0;position:relative}
+  .eyebrow{font-family:var(--body);font-weight:600;font-size:13px;letter-spacing:3px;
+    text-transform:uppercase;color:var(--cyan);margin-bottom:14px}
+  h2{font-family:var(--display);font-weight:800;font-size:clamp(30px,5vw,46px);
+    letter-spacing:-.5px;line-height:1.05;margin-bottom:14px}
+  .lead{color:var(--text-2);margin-bottom:42px;max-width:620px;font-size:17px}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:18px;
+    padding:26px;backdrop-filter:blur(10px);transition:transform .25s ease,border-color .25s ease;
+    position:relative;overflow:hidden}
+  .card::after{content:"";position:absolute;inset:0;border-radius:18px;padding:1px;
+    background:linear-gradient(140deg,transparent 40%,rgba(255,255,255,.08));
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+  .card:hover{transform:translateY(-6px)}
+  .card .ico{font-size:30px;margin-bottom:14px;display:inline-block}
+  .card h3{font-family:var(--display);font-weight:700;font-size:20px;margin-bottom:9px}
   .card p{color:var(--text-2);font-size:15px}
-  .card.rage{border-color:rgba(255,82,96,.35)} .card.rage h3{color:var(--rage)}
-  .card.happy{border-color:rgba(124,216,122,.35)} .card.happy h3{color:var(--happy)}
-  .card.cyan{border-color:rgba(92,240,210,.35)} .card.cyan h3{color:var(--cyan)}
-  .card.warn{border-color:rgba(255,200,87,.35)} .card.warn h3{color:var(--warn)}
+  .card.rage{border-color:rgba(255,77,99,.3)} .card.rage:hover{border-color:rgba(255,77,99,.6)} .card.rage h3{color:var(--rage)}
+  .card.happy{border-color:rgba(126,226,122,.3)} .card.happy:hover{border-color:rgba(126,226,122,.6)} .card.happy h3{color:var(--happy)}
+  .card.cyan{border-color:rgba(77,240,216,.3)} .card.cyan:hover{border-color:rgba(77,240,216,.6)} .card.cyan h3{color:var(--cyan)}
+  .card.warn{border-color:rgba(255,196,77,.3)} .card.warn:hover{border-color:rgba(255,196,77,.6)} .card.warn h3{color:var(--warn)}
 
-  .steps{counter-reset:s;display:grid;gap:14px;margin-top:8px}
-  .step{display:flex;gap:18px;align-items:flex-start;background:var(--surface);
-    border:1px solid var(--border);border-radius:14px;padding:18px 22px}
-  .step::before{counter-increment:s;content:counter(s);font-family:var(--display);
-    font-weight:900;font-size:24px;color:var(--cyan);min-width:34px}
-  .step b{color:var(--text)}
+  /* ventajas */
+  .perks{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:8px}
+  .perk{display:flex;gap:16px;align-items:flex-start;background:var(--surface);
+    border:1px solid var(--border);border-radius:16px;padding:22px;backdrop-filter:blur(8px)}
+  .perk .check{flex:none;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
+    font-size:17px;background:rgba(77,240,216,.12);color:var(--cyan)}
+  .perk b{display:block;font-family:var(--display);font-weight:600;font-size:16px;margin-bottom:3px}
+  .perk span{color:var(--text-2);font-size:14px}
+
+  /* pasos */
+  .steps{display:grid;gap:14px}
+  .step{display:flex;gap:20px;align-items:flex-start;background:var(--surface);
+    border:1px solid var(--border);border-radius:16px;padding:22px 24px;backdrop-filter:blur(8px);
+    transition:border-color .25s}
+  .step:hover{border-color:rgba(77,240,216,.4)}
+  .step .n{font-family:var(--display);font-weight:900;font-size:26px;
+    background:linear-gradient(120deg,var(--cyan),var(--violet));-webkit-background-clip:text;
+    background-clip:text;color:transparent;min-width:40px}
+  .step b{color:var(--text);font-weight:600}
   .step span{color:var(--text-2)}
 
-  .note{background:var(--surface-2);border:1px solid var(--border);border-radius:14px;
-    padding:20px 24px;color:var(--text-2);font-size:14px;margin-top:24px}
+  /* download card */
+  .download{text-align:center;background:linear-gradient(160deg,rgba(77,240,216,.1),rgba(157,123,255,.08));
+    border:1px solid var(--border);border-radius:26px;padding:60px 30px;backdrop-filter:blur(10px);
+    position:relative;overflow:hidden}
+  .download::before{content:"";position:absolute;width:300px;height:300px;border-radius:50%;
+    background:radial-gradient(circle,rgba(77,240,216,.25),transparent 70%);top:-120px;left:50%;
+    transform:translateX(-50%);filter:blur(20px)}
+  .download h2{position:relative}
+  .download .lead{margin:14px auto 32px;text-align:center}
+  .badge-row{display:flex;gap:18px;justify-content:center;flex-wrap:wrap;margin-top:24px;
+    font-size:13px;color:var(--text-3);position:relative}
+  .badge-row span{display:inline-flex;align-items:center;gap:7px}
+
+  .note{background:var(--surface);border:1px solid var(--border);border-radius:16px;
+    padding:22px 26px;color:var(--text-2);font-size:14px;margin-top:22px;backdrop-filter:blur(8px)}
   .note b{color:var(--text)}
 
-  footer{border-top:1px solid var(--border);padding:34px 0;color:var(--text-3);
-    font-size:14px;text-align:center;margin-top:30px}
+  /* autor */
+  .author{display:flex;align-items:center;gap:22px;background:var(--surface);
+    border:1px solid var(--border);border-radius:20px;padding:28px 30px;backdrop-filter:blur(10px);flex-wrap:wrap}
+  .author .av{flex:none;width:72px;height:72px;border-radius:50%;display:grid;place-items:center;
+    font-family:var(--display);font-weight:900;font-size:30px;color:#04130f;
+    background:linear-gradient(135deg,var(--cyan),var(--violet))}
+  .author .meta b{font-family:var(--display);font-weight:700;font-size:20px;display:block}
+  .author .meta span{color:var(--text-2);font-size:14px}
+  .author .meta a{font-size:14px}
+
+  footer{border-top:1px solid var(--border);padding:40px 0;color:var(--text-3);
+    font-size:14px;text-align:center;margin-top:40px;position:relative;z-index:2}
   footer a{color:var(--text-2)}
+  footer a:hover{color:var(--cyan)}
+
+  /* ---------- SCROLL REVEAL ---------- */
+  .reveal{opacity:0;transform:translateY(34px);transition:opacity .7s ease,transform .7s ease}
+  .reveal.in{opacity:1;transform:none}
+  .reveal.d1{transition-delay:.08s}.reveal.d2{transition-delay:.16s}
+  .reveal.d3{transition-delay:.24s}.reveal.d4{transition-delay:.32s}
+
+  @media(prefers-reduced-motion:reduce){
+    .reveal{opacity:1;transform:none;transition:none}
+    .blob,.brand .dot,.tag .live,.scroll-cue .mouse::before{animation:none}
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
 
-  <nav>
-    <div class="brand"><span class="dot"></span> RAGE TRACKER</div>
-    <div class="links">
-      <a href="#features">Qué hace</a>
-      <a href="#como">Cómo va</a>
-      <a href="#install">Instalar</a>
-      <a href="https://github.com/Anthony0827/reage-traker">GitHub</a>
-    </div>
-  </nav>
+  <!-- fondos -->
+  <canvas id="scene3d"></canvas>
+  <div class="bg-aurora"><div class="blob a"></div><div class="blob b"></div><div class="blob c"></div></div>
+  <div class="bg-grid"></div>
+  <div class="bg-vignette"></div>
 
-  <header>
-    <span class="tag">Webcam + micrófono · 100% local · sin nube</span>
-    <h1>¿Juegas <span class="happy">feliz</span><br>o con <span class="rage">rabia</span>?</h1>
-    <p class="sub">Rage Tracker te observa por la webcam y el micrófono mientras
-      juegas: detecta si estás feliz o enfadado, cuenta tus gritos y registra
-      insultos. Al terminar, un panel te enseña tu lado más salvaje.</p>
-    <div class="cta">
-      <a class="btn btn-primary" href="#install">⬇ Descargar para Windows</a>
-      <a class="btn btn-ghost" href="https://github.com/Anthony0827/reage-traker">Ver el código</a>
-    </div>
-    <div class="hint">Gratis y de código abierto · Windows 10/11</div>
-  </header>
+  <div class="wrap">
 
-  <section id="features">
-    <h2>Qué hace</h2>
-    <p class="lead">Cuatro sensores que puedes activar por separado o juntos.
-      Todo el procesado ocurre en tu PC; ni vídeo ni audio salen de tu equipo.</p>
-    <div class="grid">
-      <div class="card happy">
-        <div class="ico">😀</div>
-        <h3>Cara feliz / enfadado</h3>
-        <p>Detección por webcam robusta al ángulo de la cabeza: te alinea la cara
-           por los ojos para no fallar cuando la ladeas. Sonríes → feliz; cara
-           seria → enfadado.</p>
+    <nav>
+      <div class="brand"><span class="dot"></span> RAGE TRACKER</div>
+      <div class="links">
+        <a href="#features">Qué hace</a>
+        <a href="#ventajas">Ventajas</a>
+        <a href="#como">Cómo va</a>
+        <a href="#descargar">Descargar</a>
+        <a href="https://github.com/Anthony0827/reage-traker">GitHub</a>
       </div>
-      <div class="card rage">
-        <div class="ico">🔊</div>
-        <h3>Detector de gritos</h3>
-        <p>Mide el volumen del micrófono en vivo y cuenta tus gritos. Tú ajustas
-           el umbral con una barra visual hasta que solo salta cuando gritas de verdad.</p>
+    </nav>
+
+    <header>
+      <span class="tag"><span class="live"></span> Webcam + micrófono · 100% local · sin nube</span>
+      <h1>¿Juegas <span class="happy">feliz</span><br>o con <span class="rage">rabia</span>?</h1>
+      <p class="sub">Rage Tracker te observa por la webcam y el micrófono mientras juegas:
+        detecta si estás feliz o enfadado, cuenta tus gritos y registra tus insultos.
+        Al terminar, un panel te enseña tu lado más salvaje.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="#descargar">⬇ Descargar para Windows</a>
+        <a class="btn btn-ghost" href="https://github.com/Anthony0827/reage-traker">Ver el código</a>
       </div>
-      <div class="card warn">
-        <div class="ico">🤬</div>
-        <h3>Contador de insultos</h3>
-        <p>Reconocimiento de voz en español (offline) que cuenta los tacos que
-           sueltas. Nunca muestra ni guarda lo que dices: solo el número.</p>
+      <div class="hint">Gratis · Código abierto · Hecho en Python · Windows 10/11</div>
+
+      <div class="hud">
+        <div class="chip reveal"><div class="num happy" data-count="100">0</div><div class="lbl">% felicidad</div></div>
+        <div class="chip reveal d1"><div class="num rage" data-count="47">0</div><div class="lbl">gritos pillados</div></div>
+        <div class="chip reveal d2"><div class="num warn" data-count="128">0</div><div class="lbl">tacos contados</div></div>
+        <div class="chip reveal d3"><div class="num cyan" data-count="3">0</div><div class="lbl">sensores</div></div>
       </div>
-      <div class="card cyan">
-        <div class="ico">📊</div>
-        <h3>Dashboard de partidas</h3>
-        <p>Cada sesión se guarda y un panel en el navegador te muestra tu juego
-           más rabioso, el más feliz, el más ruidoso y tu evolución.</p>
+
+      <div class="scroll-cue">
+        <span class="mouse"></span>
+        Baja para ver más
       </div>
-    </div>
-  </section>
+    </header>
 
-  <section id="como">
-    <h2>Cómo funciona</h2>
-    <p class="lead">De cero a medir en un minuto. No hace falta tocar la terminal.</p>
-    <div class="steps">
-      <div class="step"><div><b>Descarga y descomprime</b> <span>el ZIP de la última versión.</span></div></div>
-      <div class="step"><div><b>Abre RageTracker.exe</b> <span>— se abre una ventana con todo a la vista.</span></div></div>
-      <div class="step"><div><b>Calibra tu cara</b> <span>una vez (sonríe y pon cara seria) para afinar la detección.</span></div></div>
-      <div class="step"><div><b>Elige sensores y juega</b> <span>— cara, gritos, insultos o todo a la vez.</span></div></div>
-      <div class="step"><div><b>Mira tu dashboard</b> <span>al terminar y descubre tu lado más salvaje.</span></div></div>
-    </div>
-  </section>
+    <!-- QUÉ HACE -->
+    <section id="features">
+      <div class="reveal"><div class="eyebrow">Los sensores</div>
+      <h2>Mide tu lado más salvaje</h2>
+      <p class="lead">Cuatro detectores que puedes activar por separado o todos a la vez.
+        Todo el procesado ocurre en tu PC: ni el vídeo ni el audio salen de tu equipo.</p></div>
+      <div class="grid">
+        <div class="card happy reveal">
+          <div class="ico">😀</div>
+          <h3>Cara feliz / enfadado</h3>
+          <p>Detección por webcam robusta al ángulo de la cabeza: te alinea la cara por los
+             ojos para no fallar cuando la ladeas. Sonríes → feliz; cara seria → enfadado.</p>
+        </div>
+        <div class="card rage reveal d1">
+          <div class="ico">🔊</div>
+          <h3>Detector de gritos</h3>
+          <p>Mide el volumen del micrófono en vivo y cuenta tus gritos. Tú ajustas el umbral
+             con una barra visual hasta que solo salta cuando gritas de verdad.</p>
+        </div>
+        <div class="card warn reveal d2">
+          <div class="ico">🤬</div>
+          <h3>Contador de insultos</h3>
+          <p>Reconocimiento de voz en español (offline) que cuenta los tacos que sueltas.
+             Nunca muestra ni guarda lo que dices: solo el número.</p>
+        </div>
+        <div class="card cyan reveal d3">
+          <div class="ico">📊</div>
+          <h3>Dashboard de partidas</h3>
+          <p>Cada sesión se guarda y un panel en el navegador te muestra tu juego más rabioso,
+             el más feliz, el más ruidoso y tu evolución partida a partida.</p>
+        </div>
+      </div>
+    </section>
 
-  <section id="install">
-    <h2>Instalar</h2>
-    <p class="lead">Un único ZIP con todo dentro (incluye el modelo de voz). No
-      necesita Python ni instalar dependencias.</p>
-    <div class="cta" style="justify-content:flex-start">
-      <a class="btn btn-primary" href="https://github.com/Anthony0827/reage-traker/releases/latest">⬇ Descargar última versión</a>
-    </div>
-    <div class="note">
-      <b>Cómo ejecutarlo:</b> descomprime el ZIP en una carpeta y haz doble clic
-      en <b>RageTracker.exe</b>. La primera vez Windows SmartScreen puede avisar de
-      que es un programa nuevo: pulsa <b>«Más información» → «Ejecutar de todas
-      formas»</b>. Tus datos de calibración y de partidas se guardan en tu carpeta
-      de usuario (<b>%APPDATA%\RageTracker</b>), no dentro del programa.
-    </div>
-    <div class="note">
-      <b>Requisitos:</b> Windows 10/11 · webcam para la detección de cara ·
-      micrófono para gritos e insultos. Cada sensor es opcional.
-    </div>
-  </section>
+    <!-- VENTAJAS -->
+    <section id="ventajas">
+      <div class="reveal"><div class="eyebrow">Por qué te gustará</div>
+      <h2>Las ventajas</h2>
+      <p class="lead">Pensado para gamers que quieren reírse de sí mismos y, de paso,
+        saber cuándo toca soltar el mando.</p></div>
+      <div class="perks">
+        <div class="perk reveal"><div class="check">🔒</div><div><b>100% privado y local</b><span>Nada sube a internet. No graba vídeo y los insultos jamás se transcriben.</span></div></div>
+        <div class="perk reveal d1"><div class="check">⚡</div><div><b>Tiempo real</b><span>Ves emociones, gritos e insultos según ocurren, con un HUD sobre la imagen.</span></div></div>
+        <div class="perk reveal d2"><div class="check">🎛️</div><div><b>Tú eliges qué medir</b><span>Activa solo cara, solo gritos, solo insultos o cualquier combinación.</span></div></div>
+        <div class="perk reveal d3"><div class="check">🧠</div><div><b>Autoconocimiento</b><span>Descubre qué juegos te encienden y cuándo necesitas un descanso.</span></div></div>
+        <div class="perk reveal"><div class="check">📈</div><div><b>Historial por juego</b><span>Compara partidas y juegos: tu ranking de risa, rabia y boca más sucia.</span></div></div>
+        <div class="perk reveal d1"><div class="check">🆓</div><div><b>Gratis y abierto</b><span>Código auditable en GitHub. Sin cuentas, sin pagos, sin trampas.</span></div></div>
+        <div class="perk reveal d2"><div class="check">🖱️</div><div><b>Sin tocar la terminal</b><span>Doble clic al .exe y a jugar. No necesitas instalar Python ni nada.</span></div></div>
+        <div class="perk reveal d3"><div class="check">🎙️</div><div><b>Calibrable</b><span>Ajusta cámara y micro a tu setup para que detecte justo lo que quieres.</span></div></div>
+      </div>
+    </section>
 
-  <footer>
-    Rage Tracker · proyecto de código abierto ·
-    <a href="https://github.com/Anthony0827/reage-traker">github.com/Anthony0827/reage-traker</a>
-  </footer>
+    <!-- CÓMO FUNCIONA -->
+    <section id="como">
+      <div class="reveal"><div class="eyebrow">En un minuto</div>
+      <h2>Cómo funciona</h2>
+      <p class="lead">De cero a medir tu rabia sin complicarte. Cinco pasos y listo.</p></div>
+      <div class="steps">
+        <div class="step reveal"><div class="n">1</div><div><b>Descarga y descomprime</b> <span>el ZIP de la última versión.</span></div></div>
+        <div class="step reveal d1"><div class="n">2</div><div><b>Abre RageTracker.exe</b> <span>— se abre una ventana con todo a la vista.</span></div></div>
+        <div class="step reveal d2"><div class="n">3</div><div><b>Calibra tu cara</b> <span>una vez (sonríe y pon cara seria) para afinar la detección.</span></div></div>
+        <div class="step reveal d3"><div class="n">4</div><div><b>Elige sensores y juega</b> <span>— cara, gritos, insultos o todo a la vez.</span></div></div>
+        <div class="step reveal d4"><div class="n">5</div><div><b>Mira tu dashboard</b> <span>al terminar y descubre tu lado más salvaje.</span></div></div>
+      </div>
+    </section>
 
-</div>
+    <!-- DESCARGAR -->
+    <section id="descargar">
+      <div class="download reveal">
+        <h2>Descarga Rage Tracker</h2>
+        <p class="lead">Un único ZIP con todo dentro (incluye el modelo de voz). No necesita
+          Python ni instalar dependencias. Descomprime y ejecuta.</p>
+        <a class="btn btn-primary" href="#" download>⬇ Descargar para Windows</a>
+        <div class="badge-row">
+          <span>🪟 Windows 10/11</span>
+          <span>📦 ZIP autocontenido</span>
+          <span>🆓 Gratis y open source</span>
+        </div>
+      </div>
+      <div class="note">
+        <b>Cómo ejecutarlo:</b> descomprime el ZIP en una carpeta y haz doble clic en
+        <b>RageTracker.exe</b>. La primera vez Windows SmartScreen puede avisar de que es un
+        programa nuevo: pulsa <b>«Más información» → «Ejecutar de todas formas»</b>. Tus datos
+        de calibración y de partidas se guardan en tu carpeta de usuario, no dentro del programa.
+      </div>
+      <div class="note">
+        <b>Requisitos:</b> Windows 10/11 · webcam para la detección de cara · micrófono para
+        gritos e insultos. Cada sensor es opcional. ¿Prefieres ejecutarlo desde el código
+        fuente en Python? Tienes la guía completa en el
+        <a href="https://github.com/Anthony0827/reage-traker">repositorio de GitHub</a>.
+      </div>
+    </section>
+
+    <!-- AUTOR -->
+    <section id="autor">
+      <div class="reveal"><div class="eyebrow">Quién lo hace</div>
+      <h2>El autor</h2></div>
+      <div class="author reveal d1">
+        <div class="av">A</div>
+        <div class="meta">
+          <b>Anthony</b>
+          <span>Desarrollador principal de Rage Tracker · proyecto de código abierto hecho en Python.</span>
+          <a href="https://github.com/Anthony0827">@Anthony0827 en GitHub</a>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      Rage Tracker · proyecto de código abierto · hecho por
+      <a href="https://github.com/Anthony0827">Anthony</a> ·
+      <a href="https://github.com/Anthony0827/reage-traker">github.com/Anthony0827/reage-traker</a>
+    </footer>
+
+  </div>
+
+  <!-- Three.js para el objeto 3D que reacciona al scroll -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+  (function(){
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    /* ---------- SCROLL REVEAL ---------- */
+    const io = new IntersectionObserver((entries)=>{
+      entries.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target);} });
+    },{threshold:.15});
+    document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+
+    /* ---------- CONTADORES ANIMADOS ---------- */
+    const counters = document.querySelectorAll('.num[data-count]');
+    const cio = new IntersectionObserver((entries)=>{
+      entries.forEach(e=>{
+        if(!e.isIntersecting) return;
+        const el = e.target, target = +el.dataset.count;
+        let n = 0; const step = Math.max(1, Math.round(target/40));
+        const tick = ()=>{ n += step; if(n>=target){el.textContent=target;} else {el.textContent=n; requestAnimationFrame(tick);} };
+        tick(); cio.unobserve(el);
+      });
+    },{threshold:.6});
+    counters.forEach(c=>cio.observe(c));
+
+    /* ---------- ESCENA 3D ---------- */
+    const canvas = document.getElementById('scene3d');
+    if(reduce || !window.THREE){ if(canvas) canvas.style.display='none'; return; }
+
+    const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 100);
+    camera.position.z = 5;
+
+    // Objeto central: icosaedro wireframe (núcleo "emocional")
+    const geo = new THREE.IcosahedronGeometry(1.7, 1);
+    const wire = new THREE.MeshBasicMaterial({color:0x4df0d8, wireframe:true, transparent:true, opacity:.55});
+    const core = new THREE.Mesh(geo, wire);
+    scene.add(core);
+
+    // Núcleo interior sólido con leve brillo
+    const innerGeo = new THREE.IcosahedronGeometry(1.05, 0);
+    const innerMat = new THREE.MeshBasicMaterial({color:0xff4d63, wireframe:true, transparent:true, opacity:.35});
+    const inner = new THREE.Mesh(innerGeo, innerMat);
+    scene.add(inner);
+
+    // Campo de partículas (estrellas)
+    const pCount = 900;
+    const pGeo = new THREE.BufferGeometry();
+    const pos = new Float32Array(pCount*3);
+    for(let i=0;i<pCount*3;i++){ pos[i] = (Math.random()-0.5)*22; }
+    pGeo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+    const pMat = new THREE.PointsMaterial({color:0x9d7bff, size:0.03, transparent:true, opacity:.7});
+    const stars = new THREE.Points(pGeo, pMat);
+    scene.add(stars);
+
+    // Estado de scroll y puntero
+    let scrollY = window.scrollY;
+    let targetScroll = scrollY;
+    let mouseX = 0, mouseY = 0;
+    window.addEventListener('scroll', ()=>{ targetScroll = window.scrollY; }, {passive:true});
+    window.addEventListener('pointermove', (e)=>{
+      mouseX = (e.clientX/window.innerWidth - 0.5);
+      mouseY = (e.clientY/window.innerHeight - 0.5);
+    });
+
+    window.addEventListener('resize', ()=>{
+      camera.aspect = window.innerWidth/window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    const clock = new THREE.Clock();
+    function animate(){
+      requestAnimationFrame(animate);
+      const t = clock.getElapsedTime();
+      scrollY += (targetScroll - scrollY)*0.08;
+      const sp = scrollY / (document.body.scrollHeight - window.innerHeight || 1); // 0..1
+
+      // El objeto 3D gira y se desplaza según el scroll
+      core.rotation.x = t*0.15 + sp*Math.PI*2;
+      core.rotation.y = t*0.2 + sp*Math.PI*3;
+      core.position.y = sp*2.2;            // sube al bajar
+      core.position.x = Math.sin(sp*Math.PI*2)*1.4;
+      const s = 1 + Math.sin(t*1.5)*0.04;  // latido
+      core.scale.set(s,s,s);
+
+      inner.rotation.x = -t*0.3 - sp*Math.PI*2;
+      inner.rotation.z = t*0.22;
+      inner.position.copy(core.position);
+
+      // El color del núcleo vira de cian (calma) a rojo (rabia) con el scroll
+      wire.color.setRGB(0.30 + sp*0.7, 0.94 - sp*0.65, 0.85 - sp*0.5);
+
+      stars.rotation.y = t*0.02 + sp*0.5;
+      stars.rotation.x = sp*0.3;
+
+      // parallax suave con el ratón
+      camera.position.x += (mouseX*0.6 - camera.position.x)*0.05;
+      camera.position.y += (-mouseY*0.6 - camera.position.y)*0.05;
+      camera.lookAt(0,0,0);
+
+      renderer.render(scene, camera);
+    }
+    animate();
+  })();
+  </script>
 </body>
 </html>
