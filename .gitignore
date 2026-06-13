@@ -37,7 +37,6 @@ Thumbs.db
 # El .spec SÍ se versiona; los artefactos de build no.
 build/
 dist/
-RageTracker-windows.zip
 
 _backup_old_files/
 
