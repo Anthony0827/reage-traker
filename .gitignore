@@ -42,17 +42,9 @@ RageTracker-windows.zip
 
 _backup_old_files/
 
-# ===== Documentación generada (memoria .docx) =====
-documentacion/
-*.docx
 
-# ===== Herramientas =====
 
-opencode.json
-_nuevos_temp/
 
-micro_temp/
 
-# ===== Claude Code =====
 
-.claude/
+
